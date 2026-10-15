@@ -12,10 +12,13 @@ the machine from the code and checks the code against the rules.
 ## Tools
 
 - Rules: `/Users/huangyuxuan/projects/visual_code/RULES.md`. Read them first.
-- Check: `node /Users/huangyuxuan/projects/visual_code/src/cli.js check <project>`
-  prints each rule break as `path:line  message` and exits 0 when there are none.
-- Diagram (optional): `node /Users/huangyuxuan/projects/visual_code/src/cli.js <project>`
-  serves it at http://localhost:4400.
+- Check: `visual-code check <project>` prints each rule break as
+  `path:line  message` and exits 0 when there are none.
+- Diagram: `visual-code <project>` serves it at http://localhost:4400 (pick
+  another with `--port`). Show it to the user after a change: they judge the
+  structure by looking at it.
+- If `visual-code` is not found (it is linked into one Node version), use
+  `node /Users/huangyuxuan/projects/visual_code/src/cli.js` in its place.
 
 ## Workflow
 
