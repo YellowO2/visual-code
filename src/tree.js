@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { check } from './checks.js'
 import { readImports } from './imports.js'
-import { isPort, readWires } from './wiring.js'
+import { handedRuns, isPort, isUsed, readWires } from './wiring.js'
 
 const SKIPPED = new Set(['node_modules'])
 const SOURCE = /\.(py|js|ts|jsx|tsx)$/
@@ -87,7 +87,7 @@ function wire(root, folder, find) {
   for (const [name, path] of readImports(source, folder.path === '.' ? '' : folder.path, find)) {
     if (partOf(path)) named.set(name, partOf(path))
   }
-  const end = (id) => (isPort(id) ? `${folder.path}#${id}` : id)
+  const end = (id) => (isPort(id) || isUsed(id) ? `${folder.path}#${id}` : id)
   const { wires, calls, work, functions } = readWires(source, named)
   folder.main = main.path
   folder.about = title(source)
@@ -112,7 +112,7 @@ function describe(root, file, find) {
   const here = file.path.slice(0, file.path.length - file.name.length)
   const uses = [...new Set(readImports(source, here, find).values())].filter((path) => path !== file.path)
   const runs = /__name__\s*==\s*['"]__main__['"]/.test(source)
-  return { about: title(source), defines, uses, runs }
+  return { about: title(source), defines, uses, runs, handed: handedRuns(source) }
 }
 
 function onShelf(node) {

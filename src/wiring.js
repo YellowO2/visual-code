@@ -8,6 +8,7 @@
 
 const INPUT = 'in:'
 const OUTPUT = 'out:'
+const USED = 'use:'
 const SCOPE = /^\s*(?:async\s+)?(?:def|function|func|fn)\s+(\w+)\s*\((.*)\)/s
 const RETURN = /^\s*return\s+([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*$/
 const LOOP = /^\s*(?:async\s+)?for\s+(.+?)\s+in\s+(.+):\s*$/s
@@ -24,6 +25,8 @@ const GLUE = new Set(['len', 'range', 'enumerate', 'zip', 'list', 'dict', 'tuple
   'reversed', 'items', 'keys', 'values', 'append', 'extend', 'isinstance', 'super'])
 
 export const isPort = (end) => end.startsWith(INPUT) || end.startsWith(OUTPUT)
+// A part handed in through an input and run there: drawn inside the machine.
+export const isUsed = (end) => end.startsWith(USED)
 
 // `parts` maps each name the file imports from one of its parts to that part.
 // Returns the wires, the parts called, the lines that do work instead of
@@ -45,7 +48,10 @@ export function readWires(source, parts) {
     if (parameterList !== undefined) {
       const inputs = parameters(parameterList)
       writers = new Map(inputs.map((input) => [input, [INPUT + input]]))
-      // A parameter declared as a part is that part, handed in.
+      // A parameter declared as a part is that part, handed in; any other
+      // parameter that gets called is a part handed in from outside.
+      instances.clear()
+      for (const input of inputs) instances.set(input, USED + input)
       for (const [input, type] of typed(parameterList)) {
         if (parts.has(type)) instances.set(input, parts.get(type))
       }
@@ -169,3 +175,33 @@ function connect(wires, from, to, name, kind) {
 const names = (list) => list?.replace(/[()]/g, '').split(',').map((name) => name.trim()) ?? []
 const count = (text, pattern) => text.match(pattern)?.length ?? 0
 const unique = (items) => [...new Set(items)]
+
+// Where a file runs a part it was handed: a call to one of its own functions'
+// inputs that has no default. A main file does this to wire; a part must not.
+export function handedRuns(source) {
+  const runs = []
+  const scopes = []
+  for (const { text: statement, line } of statements(source)) {
+    if (!statement.trim()) continue
+    const indent = statement.match(/^\s*/)[0].length
+    while (scopes.length && indent <= scopes.at(-1).indent) scopes.pop()
+    const [, , parameterList] = statement.match(SCOPE) ?? []
+    if (parameterList !== undefined) {
+      scopes.push({ indent, handed: new Set(required(parameterList)) })
+      continue
+    }
+    for (const [, text] of statement.matchAll(CALL)) {
+      if (!text.includes('.') && scopes.some(({ handed }) => handed.has(text))) runs.push({ name: text, line })
+    }
+  }
+  return runs
+}
+
+// The inputs a caller must give: no default, and not the receiver.
+function required(list) {
+  for (let before; before !== list; ) [before, list] = [list, list.replace(BRACKETED, '')]
+  return list.split(',').map((parameter) => parameter.trim())
+    .filter((parameter) => parameter && !parameter.includes('=') && !parameter.startsWith('*'))
+    .map((parameter) => parameter.match(NAME)?.[0])
+    .filter((name) => name && !RECEIVERS.has(name) && name !== 'cls')
+}

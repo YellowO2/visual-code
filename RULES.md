@@ -19,7 +19,7 @@
 17. Logging, timing and caches are not wires. Each part logs through Python's `logging`, configured once where the program starts.
 18. A file lives in the closest folder holding everything that uses it. Shelves in between are fine. A type on a machine's ports (declared in its `main.py` signature, like `settings: Settings`) belongs to that machine, and anyone calling the machine may use it; hovering a port shows its type. A file nothing uses, and that is not run on its own, is deleted. Hovering a file lights up the files that use it.
 19. Shared helpers that parts use inside themselves (coordinate conversions, a file format) live in a `tools/` folder. A tool is shared: one used by a single file belongs with it. A tool file may offer a family of related functions; it still says what it is. Tools are not wires: they show in a toolbox strip, and hovering one lights up its users.
-20. Parts don't call parts. Only a `main.py` connects parts. A part that needs other parts is a machine: give it a folder with a `main.py` that wires them. A part handed in (a parameter typed with its class) is a wire, not a call. Another package is a library: a user interface calling the engine package uses it like any library.
+20. Parts don't run parts. Only a `main.py` runs parts, whether it imports them or is handed them; a part that needs to run others, imported or handed to it, is a machine: give it a folder with a `main.py`. A part handed to another (`ui(build=streetview_to_3d)`) is drawn as a dashed line labelled "uses", from the one that uses it to the part; inside the machine that runs it, it is a box. A button only triggers its job; the job is a machine. Other functions passed around as values are not parts. Another package is a library: a user interface calling the engine package uses it like any library.
 
 ## Checks
 
@@ -32,7 +32,7 @@
 - A wire between two parts named like a location (`path`, `dir`, `folder`, `file`): see rule 16.
 - A `main.py` input such as `log` or `verbose`: see rule 17.
 - A tool used by only one file: a tool is shared (rule 19).
-- A part that imports another part (not a tool or a type): see rule 20.
+- A part that imports another part (not a tool or a type), or runs a part handed to it (followed through the `main.py` files from where it is handed over): see rule 20.
 - A file inside a machine that is not a part (no wire reaches it), a tool or a type. What a package's top `__init__.py` offers is its public face, for callers, and is fine.
 - A file living away from the files that use it, or that nothing uses: see rule 18. Tests and scripts outside the package do not count as users.
 - A `main.py` with more than one function: it has one main function.

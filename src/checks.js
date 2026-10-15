@@ -12,6 +12,7 @@ const LOCATION = /(^|_)(path|paths|dir|dirs|directory|folder|folders|file|files|
 const ABBREVIATED = new Set(['cfg', 'conf', 'prep', 'res', 'ret', 'tmp', 'temp', 'val', 'vals', 'obj',
   'arr', 'lst', 'dct', 'info', 'data', 'stuff', 'args', 'kwargs', 'params', 'opts', 'ctx', 'buf'])
 const MAX_OPENING = 72
+const MACHINE = "parts don't run parts; make it a machine, a folder whose main.py runs them"
 const GROUP = 'group values that always travel together, drop ones that repeat others, and keep data, settings and verdicts apart'
 
 export function check(nodes) {
@@ -80,12 +81,14 @@ function unplaced(nodes, machines) {
     .map((file) => ({ path: file.path, message: 'no wire reaches it, and it is not a tool or a type: wire it in, make it a tool, or move it next to what uses it' }))
 }
 
-// Only a main file connects parts. A part that uses other parts is a machine
-// hiding in a file, its pipeline out of sight. Another package is a library.
+// Only a main file runs parts. A part that runs other parts, imported or
+// handed to it, is a machine hiding in a file, its pipeline out of sight.
+// Another package is a library.
 function hidden(nodes, machines) {
   const byPath = new Map(nodes.map((node) => [node.path, node]))
   const isPlainPart = (file) => file && isPart(file, machines) && !outside(file) && !isTool(file) && !isType(file)
   const packageOf = (path) => path.split('/')[0]
+  const holders = handedParts(machines)
   return nodes
     .filter((file) => isPlainPart(file) && !ENTRY.test(file.name))
     .flatMap((file) => {
@@ -94,9 +97,11 @@ function hidden(nodes, machines) {
         return isPlainPart(other) && (other.name === 'main.py' || !ENTRY.test(other.name))
           && packageOf(path) === packageOf(file.path)
       })
-      if (!used.length) return []
       const names = used.map((path) => path.split('/').at(-1) === 'main.py' ? path.split('/').at(-2) : path.split('/').at(-1))
-      return [{ path: file.path, message: `uses other parts (${names.join(', ')}): parts don't call parts; make it a machine, a folder whose main.py wires them` }]
+      const imported = names.length ? [{ path: file.path, message: `uses other parts (${names.join(', ')}): ${MACHINE}` }] : []
+      const handed = (holders.has(file.path) ? file.handed ?? [] : []).map(({ name, line }) => ({ path: file.path, line,
+        message: `runs ${name}, a part it was handed: ${MACHINE}` }))
+      return [...imported, ...handed]
     })
 }
 
@@ -111,6 +116,29 @@ function unshared(nodes) {
     .filter((file) => file.defines && isTool(file) && !outside(file) && !ENTRY.test(file.name)
       && (users.get(file.path)?.size ?? 0) === 1)
     .map((file) => ({ path: file.path, message: `only ${[...users.get(file.path)][0]} uses it: a tool is shared; make it part of its user, or a part of its own` }))
+}
+
+// The files a part is handed to, following the main files: a 'uses' wire
+// hands a part over, and an input it arrived by passes it on to whatever that
+// input is wired to. Other functions passed around as values are not parts.
+function handedParts(machines) {
+  const byPath = new Map(machines.map((machine) => [machine.path, machine]))
+  const holders = new Set()
+  const arrived = []
+  const reach = (target, names) => {
+    if (holders.has(target)) return
+    holders.add(target)
+    if (byPath.has(target)) arrived.push(...names.map((name) => `${target}#in:${name}`))
+  }
+  for (const machine of machines) {
+    for (const { from, to, names, kind } of machine.wires) if (kind === 'uses') reach(to, names)
+  }
+  while (arrived.length) {
+    const port = arrived.pop()
+    const machine = byPath.get(port.split('#')[0])
+    for (const { from, to, names } of machine.wires) if (from === port) reach(to, names)
+  }
+  return holders
 }
 
 // A type's one offering is a class.
