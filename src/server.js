@@ -30,15 +30,14 @@ export function serve(root, port) {
   })
 
   return createServer(async (req, res) => {
-    const path = new URL(req.url, 'http://localhost').pathname
-    if (path === '/events') {
+    if (req.url === '/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' })
       send(res, snapshot)
       clients.add(res)
       req.on('close', () => clients.delete(res))
       return
     }
-    const asset = ASSETS[path]
+    const asset = ASSETS[req.url]
     if (!asset) return res.writeHead(404).end()
     const [file, type] = asset
     res.writeHead(200, { 'content-type': type })

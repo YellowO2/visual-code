@@ -1,14 +1,32 @@
+import ELK from 'elkjs/lib/elk.bundled.js'
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BaseEdge, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider, useReactFlow } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { drawnBy, find, layout, onShelf } from './layout.js'
 
+const elk = new ELK()
 const Toggle = createContext()
+// Which walls values enter and leave by, for each way the diagram can flow.
+const SIDES = { DOWN: { in: 'NORTH', out: 'SOUTH' }, RIGHT: { in: 'WEST', out: 'EAST' } }
 const SETTLE_MS = 200
-const DIRECTIONS = ['RIGHT', 'DOWN']
+const CHARACTER = 7.2
+const LINE = 16
+const PAD = 16
+const ABOUT_WIDTH = 260
 const MOVE_MS = 300
 const TOAST_MS = 1500
+const LAYOUT = {
+  'elk.algorithm': 'layered',
+  'elk.edgeRouting': 'ORTHOGONAL',
+  'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
+  'elk.json.edgeCoords': 'ROOT',
+  'elk.layered.spacing.nodeNodeBetweenLayers': '40',
+  'elk.spacing.nodeNode': '24',
+  'elk.spacing.edgeEdge': '10',
+  'elk.spacing.edgeNode': '14',
+  'elk.spacing.portPort': '8',
+  'elk.edgeLabels.inline': 'true',
+}
 
 // The project as the server reads it: folders, files and how main files wire them.
 function App() {
@@ -84,12 +102,11 @@ function Diagram({ tree, opened, toggle, focus, hovered, hover, users }) {
   useEffect(() => {
     if (!screen) return
     let current = true
-    const aspect = screen.width / screen.height
-    const lay = (direction) => layout(outermost(tree), { opened, tree, direction, aspect })
-    const extent = (boxes) => ({ width: Math.max(...boxes.map((b) => b.x + b.width)), height: Math.max(...boxes.map((b) => b.y + b.height)) })
-    const fit = (boxes) => Math.min(screen.width / extent(boxes).width, screen.height / extent(boxes).height)
+    const lay = (direction) => elk.layout({ id: 'root', layoutOptions: { ...LAYOUT, 'elk.direction': direction },
+      children: outermost(tree).map((machine) => elkMachine(machine, opened, tree, direction, true)), edges: [] })
+    const fit = ({ width, height }) => Math.min(screen.width / width, screen.height / height)
     const choosing = !flow.current || flow.current.screen !== screen
-    const directions = choosing ? DIRECTIONS : [flow.current.direction]
+    const directions = choosing ? Object.keys(SIDES) : [flow.current.direction]
     Promise.all(directions.map(lay)).then((results) => {
       if (!current) return
       const best = results.reduce((a, b) => (fit(b) > fit(a) ? b : a))
@@ -123,32 +140,83 @@ function Diagram({ tree, opened, toggle, focus, hovered, hover, users }) {
   )
 }
 
-// The laid-out machines as React Flow nodes, each placed in its parent, and
-// wires along their routes, on the page.
-function flatten(boxes, tree) {
+// A machine as ELK sees it: its parts, inside the shelves they sit on, its open
+// machines laid out inside it, its ports, and one edge per wire, kept in the
+// innermost box holding both its ends. The outermost machine's ports are boxes
+// of their own, held to the first and last rows.
+function elkMachine(machine, opened, tree, direction, outermost = false) {
+  const drawn = drawnBy(machine)
+  const boxes = new Map()
+  const fill = (folder, into) => {
+    boxes.set(folder.path, into)
+    into.children = folder.children.flatMap((child) => {
+      if (child.children && !child.main) {
+        if (!child.children.flatMap(onShelf).some((part) => drawn.has(part.path))) return []
+        const shelf = { id: child.path, kind: 'shelf', label: child.name, layoutOptions: { 'elk.padding': padding(1) }, edges: [] }
+        fill(child, shelf)
+        return [shelf]
+      }
+      if (!drawn.has(child.path)) return []
+      if (child.wires && opened.has(child.path)) return [elkMachine(child, opened, tree, direction)]
+      const label = child.wires ? `${child.name} ▸` : child.name
+      return [{ id: child.path, kind: child.wires ? 'machine' : 'part', label, ...size(label) }]
+    })
+  }
+  const box = { id: machine.path, kind: 'frame', edges: [], layoutOptions: { 'elk.padding': padding(headingLines(machine)) } }
+  fill(machine, box)
+  const walls = [...drawn].filter((end) => end.startsWith(`${machine.path}#`))
+  const name = (end) => end.split(':').pop()
+  if (outermost) {
+    box.children.push(...walls.map((end) => ({ id: end, kind: 'port', label: name(end), ...size(name(end), 10),
+      layoutOptions: { 'elk.layered.layering.layerConstraint': end.includes('#in:') ? 'FIRST' : 'LAST' } })))
+  } else {
+    box.ports = walls.map((end) => ({ id: end, label: name(end), ...size(name(end), 10),
+      layoutOptions: { 'elk.port.side': SIDES[direction][end.includes('#in:') ? 'in' : 'out'] } }))
+    box.layoutOptions['elk.portConstraints'] = 'FIXED_SIDE'
+  }
+  const holder = (ends) => {
+    const owners = ends.map((end) => end.split('#')[0])
+    return [...boxes.keys()].sort((a, b) => b.length - a.length).find((path) => owners.every((owner) =>
+      owner === machine.path ? path === machine.path : path === '.' || (owner.startsWith(path) && owner !== path)))
+  }
+  for (const { from, to, names } of machine.wires) {
+    const source = portOf(from, 'out', names, opened, tree)
+    const target = portOf(to, 'in', names, opened, tree)
+    // A port already names what passes through it.
+    const label = source.includes('#') || target.includes('#') ? '' : names.join(', ')
+    boxes.get(holder([source, target])).edges.push({ id: `${source}>${target}`, sources: [source], targets: [target],
+      labels: label ? [{ text: label, ...size(label, 10) }] : [] })
+  }
+  return box
+}
+
+// ELK's result as React Flow nodes, each placed in its parent, and edges along
+// ELK's routes.
+function flatten(root, tree) {
   const nodes = []
   const edges = []
-  const visit = (box, parentId, origin) => {
-    nodes.push({ id: box.id, parentId, type: 'frame', position: { x: box.x, y: box.y }, style: { width: box.width, height: box.height },
-      data: { id: box.id, label: `${box.label} ▾`, about: box.about, machine: true } })
-    const at = { x: origin.x + box.x, y: origin.y + box.y }
-    for (const shelf of box.shelves) {
-      nodes.push({ id: shelf.id, parentId: box.id, type: 'shelf', zIndex: -1, position: { x: shelf.x, y: shelf.y },
-        style: { width: shelf.width, height: shelf.height }, data: { label: shelf.label } })
+  const visit = (node, parentId) => {
+    if (node !== root) {
+      const folder = node.kind === 'frame' && find(tree, node.id)
+      nodes.push({
+        id: node.id, parentId, type: node.kind, position: { x: node.x, y: node.y },
+        style: { width: node.width, height: node.height },
+        data: folder ? { id: node.id, label: `${folder.name} ▾`, about: folder.about, machine: true }
+          : { label: node.label, about: find(tree, node.id)?.about },
+      })
     }
-    for (const node of box.nodes) {
-      if (node.box) visit({ ...node.box, x: node.x, y: node.y }, box.id, at)
-      else nodes.push({ id: node.id, parentId: box.id, type: node.kind, position: { x: node.x, y: node.y },
-        style: { width: node.width, height: node.height }, data: { label: node.label, about: find(tree, node.id)?.about } })
+    for (const port of node.ports ?? []) {
+      nodes.push({ id: port.id, parentId: node.id, type: 'port', position: { x: port.x, y: port.y },
+        style: { width: port.width, height: port.height }, data: { label: port.label } })
     }
-    const shift = ({ x, y }) => ({ x: x + at.x, y: y + at.y })
-    for (const edge of box.edges) {
-      edges.push({ id: edge.id, source: edge.source, target: edge.target, type: 'routed',
-        markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
-        data: { points: edge.points.map(shift), label: edge.label && { ...edge.label, ...shift(edge.label) } } })
+    for (const child of node.children ?? []) visit(child, node === root ? undefined : node.id)
+    for (const edge of node.edges ?? []) {
+      const points = (edge.sections ?? []).flatMap(({ startPoint, bendPoints = [], endPoint }) => [startPoint, ...bendPoints, endPoint])
+      edges.push({ id: edge.id, source: edge.sources[0], target: edge.targets[0], type: 'routed',
+        markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 }, data: { points, label: edge.labels?.[0] } })
     }
   }
-  for (const box of boxes) visit(box, undefined, { x: 0, y: 0 })
+  visit(root)
   return { nodes, edges }
 }
 
@@ -312,7 +380,16 @@ function parentMachine(tree, path) {
   return holders(tree).at(-1)?.path
 }
 
+// What a machine draws: every end of its wires, and every part it calls.
+function drawnBy(machine) {
+  return new Set([...machine.wires.flatMap(({ from, to }) => [from, to]), ...machine.calls])
+}
 
+// A wire that reaches an open machine goes on to the port of the same name on its wall.
+function portOf(end, kind, names, opened, tree) {
+  const port = `${end}#${kind}:${names[0]}`
+  return opened.has(end) && drawnBy(find(tree, end)).has(port) ? port : end
+}
 
 // What a machine and the machines open inside it do not wire up. Tests,
 // scripts, private folders and files in another language are not parts.
@@ -342,15 +419,36 @@ function shelfOf(part, machine) {
   return inside.slice(0, inside.lastIndexOf(part.name))
 }
 
+// A folder without a main file is a shelf: what is on it belongs to the machine around it.
+function onShelf(node) {
+  return node.children && !node.main ? node.children.flatMap(onShelf) : [node]
+}
 
 // Loaders and savers, where the system meets the disk, by their names.
 function touchesDisk(name) {
   return /^(load|save)|(Loader|Saver)$/i.test(name.replace(/\.[^.]+$/, ''))
 }
 
+function size(text, fontSize = 12) {
+  return { width: text.length * CHARACTER * (fontSize / 12) + 2 * PAD, height: LINE + (fontSize === 12 ? 16 : 6) }
+}
 
+// A machine's heading says what it does, so the box leaves room above its parts.
+function headingLines(folder) {
+  return 1 + Math.ceil(((folder.about ?? '').length * CHARACTER * (11 / 12)) / ABOUT_WIDTH)
+}
 
+function padding(lines) {
+  return `[top=${lines * LINE + PAD},left=${PAD},bottom=${PAD},right=${PAD}]`
+}
 
+function find(node, path) {
+  if (node.path === path) return node
+  for (const child of node.children ?? []) {
+    const found = find(child, path)
+    if (found) return found
+  }
+}
 
 function files(node) {
   return node.children ? node.children.flatMap(files) : [node]
