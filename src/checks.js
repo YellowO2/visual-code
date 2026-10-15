@@ -13,7 +13,8 @@ const ABBREVIATED = new Set(['cfg', 'conf', 'prep', 'res', 'ret', 'tmp', 'temp',
   'arr', 'lst', 'dct', 'info', 'data', 'stuff', 'args', 'kwargs', 'params', 'opts', 'ctx', 'buf'])
 const MAX_OPENING = 72
 const MACHINE = "parts don't run parts; make it a machine, a folder whose main.py runs them"
-const GROUP = 'group values that always travel together, drop ones that repeat others, and keep data, settings and verdicts apart'
+// Rule 14, said the way a warning needs it: the counts only notice its breaking.
+const GROUP = 'values that travel together are one value: group them into a named type (settings in one settings), drop ones that repeat others, and keep data, settings and verdicts apart'
 
 export function check(nodes) {
   const machines = nodes.filter((node) => node.main)
@@ -185,8 +186,8 @@ function warnings(node, inMachine) {
     if (VAGUE.has(stem)) warn(`"${node.name}" does not say what it is`)
     for (const { line, text } of node.work ?? []) warn(`does work instead of wiring: ${shorten(text)}`, line)
     for (const { name, line, inputs, outputs, ports } of node.functions ?? []) {
-      if (inputs > MAX_INPUTS) warn(`${name} takes ${inputs} inputs: ${GROUP}`, line)
-      if (outputs > MAX_OUTPUTS) warn(`${name} returns ${outputs} values: ${GROUP}`, line)
+      if (inputs > MAX_INPUTS) warn(`${name} takes ${inputs} separate values, so some probably belong together: ${GROUP}`, line)
+      if (outputs > MAX_OUTPUTS) warn(`${name} gives back ${outputs} separate values, so some probably belong together: ${GROUP}`, line)
       for (const port of new Set(ports)) {
         if (SIDE_CHANNELS.has(port)) {
           warn(`port "${port}" is not data: use Python's logging inside each part instead`, line)

@@ -203,6 +203,11 @@ button.user {
   border-style: dashed;
 }
 
+.box.used {
+  border-style: dashed;
+  color: var(--muted);
+}
+
 /* What a part does, on hover. */
 .box .about {
   position: absolute;

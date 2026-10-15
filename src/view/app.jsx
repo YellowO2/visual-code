@@ -178,8 +178,13 @@ function elkMachine(machine, opened, tree, direction) {
   }
   const box = { id: machine.path, kind: 'frame', edges: [], layoutOptions: { 'elk.padding': padding(headingLines(machine)) } }
   fill(machine, box)
-  const walls = [...drawn].filter((end) => end.startsWith(`${machine.path}#`))
+  const own = [...drawn].filter((end) => end.startsWith(`${machine.path}#`))
+  const walls = own.filter((end) => !end.includes('#use:'))
   const name = (end) => end.split(':').pop()
+  // A part handed in and run here is a box of its own, dashed.
+  for (const end of own.filter((end) => end.includes('#use:'))) {
+    box.children.push({ id: end, kind: 'used', label: `${name(end)} (handed in)`, ...size(`${name(end)} (handed in)`) })
+  }
   box.ports = walls.map((end) => ({ id: end, label: name(end), ...size(name(end), 10),
     layoutOptions: { 'elk.port.side': SIDES[direction][end.includes('#in:') ? 'in' : 'out'] } }))
   box.layoutOptions['elk.portConstraints'] = 'FIXED_SIDE'
@@ -253,6 +258,15 @@ function Part({ id, data }) {
   )
 }
 
+function Used({ data }) {
+  return (
+    <div className="box used nopan">
+      <Ends />
+      {data.label}
+    </div>
+  )
+}
+
 function Machine({ id, data }) {
   const users = useContext(Users)
   return (
@@ -315,7 +329,7 @@ function Routed({ data, markerEnd }) {
   )
 }
 
-const NODE_TYPES = { part: Part, machine: Machine, frame: Frame, shelf: Shelf, port: Port }
+const NODE_TYPES = { part: Part, machine: Machine, frame: Frame, shelf: Shelf, port: Port, used: Used }
 const EDGE_TYPES = { routed: Routed }
 
 function Warnings({ list, folded, fold }) {
