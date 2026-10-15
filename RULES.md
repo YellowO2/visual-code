@@ -36,6 +36,7 @@
 - A part that imports another part (not a tool or a type), or runs a part handed to it (followed through the `main.py` files from where it is handed over): see rule 20.
 - Code that uses another package past its endpoints, anything its `__init__.py` does not offer: see rule 21. The project's own top files, which put the packages together, may reach anywhere.
 - A `main.py` that runs a part it was handed, where no `main.py` hands over a part by that name: keep a part's name from where it is handed over to where it runs (rule 20).
+- A machine input that no wire reaches and nothing calls, so nothing ever gives it a value (rule 8, rule 21).
 - A `__main__.py` inside a machine: a machine starts from its `main.py`'s `if __name__ == "__main__":` block (rule 4); scripts for developers go in `scripts/`.
 - A file inside a machine that is not a part (no wire reaches it), a tool or a type. What a package's top `__init__.py` offers is its public face, for callers, and is fine.
 - A file living away from the files that use it, or that nothing uses: see rule 18. Tests and scripts outside the package do not count as users.

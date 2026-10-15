@@ -27,6 +27,7 @@ export function check(nodes) {
   found.push(...unshared(nodes))
   found.push(...reachingInside(nodes))
   found.push(...untraced(machines))
+  found.push(...unfed(nodes, machines))
   found.push(...startedElsewhere(nodes, machines))
   if (!machines.length) {
     found.push({ path: nodes[0].path, message: 'no main.py anywhere: nothing says how the parts connect' })
@@ -175,6 +176,30 @@ function untraced(machines) {
   return machines.flatMap((machine) => [...new Set(machine.wires.flatMap(({ from, to }) => [from, to]))]
     .filter((end) => end.startsWith(`${machine.path}#use:`) && !traced.has(end))
     .map((end) => ({ path: machine.main, message: `runs ${end.split(':').pop()}, handed in, but nothing hands over a part by that name: keep a part's name from where it is handed over to where it runs` })))
+}
+
+// A machine's input must be given something: a wire from its parent's main.py,
+// or a call. The outermost machines, and those a package offers its callers,
+// are given theirs from outside the project.
+function unfed(nodes, machines) {
+  const offered = new Set(nodes.filter((node) => node.name === '__init__.py' && node.path.split('/').length === 2)
+    .flatMap((node) => node.uses ?? []))
+  const traced = handedParts(machines)
+  const called = new Set([
+    ...machines.flatMap((m) => m.wires.filter((w) => w.kind === 'uses').map((w) => w.from)),
+    ...[...traced.values()].map(({ part }) => part),
+  ])
+  const parentOf = (path) => machines.filter((m) => path !== m.path && (m.path === '.' || path.startsWith(m.path)))
+    .sort((a, b) => b.path.length - a.path.length)[0]
+  return machines.flatMap((machine) => {
+    const parent = parentOf(machine.path)
+    if (!parent || offered.has(machine.main) || called.has(machine.path)) return []
+    const given = new Set(parent.wires.filter((w) => w.to === machine.path || w.to.startsWith(`${machine.path}#in:`))
+      .flatMap((w) => [...w.names, w.to.split(':').pop()]))
+    const inputs = [...new Set(machine.wires.flatMap(({ from }) => from.startsWith(`${machine.path}#in:`) ? [from.split(':').pop()] : []))]
+    return inputs.filter((name) => !given.has(name)).map((name) => ({ path: machine.main,
+      message: `input ${name} is never given by that name: nothing calls this machine and no wire from ${parent.main} carries a value called ${name}; give the value one name on both sides of the wall` }))
+  })
 }
 
 // A machine starts from its main.py, in its if __name__ == "__main__" block.
