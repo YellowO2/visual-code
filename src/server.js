@@ -29,6 +29,13 @@ export function serve(root, port) {
     pending = setTimeout(refresh, SETTLE_MS)
   })
 
+  // A page drawn by an older build of this tool reloads itself.
+  let rebuilt
+  watch(new URL('view/', import.meta.url), () => {
+    clearTimeout(rebuilt)
+    rebuilt = setTimeout(() => { for (const client of clients) client.write('event: reload\ndata: \n\n') }, SETTLE_MS)
+  })
+
   return createServer(async (req, res) => {
     if (req.url === '/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' })
@@ -40,7 +47,7 @@ export function serve(root, port) {
     const asset = ASSETS[req.url]
     if (!asset) return res.writeHead(404).end()
     const [file, type] = asset
-    res.writeHead(200, { 'content-type': type })
+    res.writeHead(200, { 'content-type': type, 'cache-control': 'no-store' })
     res.end(await readFile(new URL(file, import.meta.url)))
   }).listen(port)
 }

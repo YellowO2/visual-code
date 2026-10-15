@@ -38,6 +38,7 @@ function App() {
   const [focus, setFocus] = useState()
   useEffect(() => {
     const source = new EventSource('/events')
+    source.addEventListener('reload', () => location.reload())
     source.onmessage = ({ data }) => {
       const next = JSON.parse(data)
       setTree(next)
