@@ -46,6 +46,25 @@ the machine from the code and checks the code against the rules.
    verified behaviour, and every caller outside the project that now needs
    updating.
 
+## Shapes the rules lead to
+
+- **A button only triggers.** A control in a user interface is a switch: it
+  wires its event to a check, then its job. The check holds the decisions (is
+  the input complete? a click or a drag?) and stops quietly when there is
+  nothing to do; the job is a machine whose `main.py` is a straight line of
+  steps. In Gradio: `event(check).success(job).failure(failed)`.
+- **A part handed in keeps its name.** When one part is handed to another
+  (`ui(build=streetview_to_3d)`), call it by that name all the way to where it
+  runs, so the tool can tell which part it is.
+- **Two faces.** A package is used by others only through what its
+  `__init__.py` offers. A user interface calling an engine calls its
+  endpoints; it does not reach into its helpers or types. When the check
+  flags it, decide with the user whether the thing belongs in the engine's
+  face or in a small shared package.
+- **One place to start.** The project's top `main.py` both wires the system and,
+  in its `if __name__ == "__main__":` block, starts it. Each machine that can
+  run on its own does the same; developer scripts go in `scripts/`.
+
 ## Conventions the rules leave open
 
 - A part's name matches its file exactly; the case is the project's choice

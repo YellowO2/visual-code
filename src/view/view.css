@@ -231,8 +231,9 @@ button.user {
   opacity: 1;
 }
 
+/* A hovered box, and the note it shows, sit above everything, port names too. */
 .react-flow__node:has(.box:hover) {
-  z-index: 1000 !important;
+  z-index: 2000 !important;
 }
 
 .frame {

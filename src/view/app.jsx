@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { createRoot } from 'react-dom/client'
 import { BaseEdge, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider, useReactFlow } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import { handedParts } from '../handed.js'
 
 const elk = new ELK()
 const Toggle = createContext()
@@ -421,40 +422,6 @@ async function copy(path) {
   showToast?.(`Copied ${path}`)
 }
 
-// Which part, and which of its functions, each handed-in part really is,
-// followed up through the main files: a job is handed to a switch, the switch is given the part by a
-// name, and that name came in through its machine's wall from further up.
-function handedParts(tree) {
-  const machines = []
-  const collect = (node) => { if (node.wires) machines.push(node); node.children?.forEach(collect) }
-  collect(tree)
-  const parentOf = (path) => machines.filter((m) => path !== m.path && (m.path === '.' || path.startsWith(m.path)))
-    .sort((a, b) => b.path.length - a.path.length)[0]
-  const arrivedAt = (machine, name) => {
-    const parent = parentOf(machine.path)
-    if (!parent) return undefined
-    const wire = parent.wires.find((w) => w.to === machine.path && w.names.includes(name))
-    if (!wire) return undefined
-    if (wire.kind === 'uses') return handedBy(wire, name)
-    return wire.from === `${parent.path}#in:${name}` ? arrivedAt(parent, name) : undefined
-  }
-  // The part a 'uses' wire hands over under a name, and which of its functions that is.
-  const handedBy = (wire, name) => ({ part: wire.from, endpoint: wire.handed?.[name] ?? name })
-  const found = new Map()
-  for (const job of machines) {
-    for (const end of drawnBy(job)) {
-      if (!end.startsWith(`${job.path}#use:`)) continue
-      const name = end.split(':').pop()
-      const parent = parentOf(job.path)
-      const switchWire = parent?.wires.find((w) => w.kind === 'uses' && w.from === job.path)
-      const given = switchWire && parent.wires.find((w) => w.to === switchWire.to && w.names.includes(name))
-      const handed = !given ? undefined : given.kind === 'uses' ? handedBy(given, name)
-        : given.from === `${parent.path}#in:${name}` ? arrivedAt(parent, name) : undefined
-      if (handed) found.set(end, handed)
-    }
-  }
-  return found
-}
 
 // A project's calls: each part handed in and run inside a machine calls the
 // endpoint of the part it really is. A call starts at the box it shows on (the
@@ -479,7 +446,7 @@ function calls(tree, opened) {
       endpoint: target === part ? undefined : endpoint, labels: [{ text: 'calls', ...size('calls', 10) }] })
   }
   // A part handed in and run inside a machine calls the part it really is.
-  const handed = handedParts(tree)
+  const handed = handedParts(machinesIn(tree))
   for (const [end, { part, endpoint }] of handed) call(end, part, endpoint)
   // Whoever is handed a part calls it, unless what it does with it is shown
   // already by a call from deeper in.
@@ -501,6 +468,10 @@ function endpointsOf(called) {
   const endpoints = new Map()
   for (const { part, endpoint } of called) if (endpoint) endpoints.set(part, new Set([...(endpoints.get(part) ?? []), endpoint]))
   return endpoints
+}
+
+function machinesIn(node) {
+  return [...(node.wires ? [node] : []), ...(node.children ?? []).flatMap(machinesIn)]
 }
 
 // The machines nothing wires: where the diagram starts.

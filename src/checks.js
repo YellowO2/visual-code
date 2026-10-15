@@ -1,3 +1,5 @@
+import { handedParts } from './handed.js'
+
 // Where a project breaks the rules, as warnings a person or an agent can act on.
 
 const SOURCE = /\.(py|js|ts|jsx|tsx)$/
@@ -24,6 +26,8 @@ export function check(nodes) {
   found.push(...hidden(nodes, machines))
   found.push(...unshared(nodes))
   found.push(...reachingInside(nodes))
+  found.push(...untraced(machines))
+  found.push(...startedElsewhere(nodes, machines))
   if (!machines.length) {
     found.push({ path: nodes[0].path, message: 'no main.py anywhere: nothing says how the parts connect' })
   }
@@ -90,7 +94,7 @@ function hidden(nodes, machines) {
   const byPath = new Map(nodes.map((node) => [node.path, node]))
   const isPlainPart = (file) => file && isPart(file, machines) && !outside(file) && !isTool(file) && !isType(file)
   const packageOf = (path) => path.split('/')[0]
-  const holders = handedParts(machines)
+  const holders = partHolders(machines)
   return nodes
     .filter((file) => isPlainPart(file) && !ENTRY.test(file.name))
     .flatMap((file) => {
@@ -123,7 +127,7 @@ function unshared(nodes) {
 // The files a part is handed to, following the main files: a 'uses' wire
 // hands a part over, and an input it arrived by passes it on to whatever that
 // input is wired to. Other functions passed around as values are not parts.
-function handedParts(machines) {
+function partHolders(machines) {
   const byPath = new Map(machines.map((machine) => [machine.path, machine]))
   const holders = new Set()
   const arrived = []
@@ -162,6 +166,22 @@ function reachingInside(nodes) {
       const names = inside.map((path) => path.slice(path.indexOf('/') + 1)).join(', ')
       return [{ path: file.path, message: `reaches inside ${packageOf(inside[0])}/ (${names}): use another package only through its endpoints, what its __init__.py offers` }]
     })
+}
+
+// A machine runs a part it was handed under one name all the way from where
+// it is handed over; renamed on the way, no one can tell which part it is.
+function untraced(machines) {
+  const traced = handedParts(machines)
+  return machines.flatMap((machine) => [...new Set(machine.wires.flatMap(({ from, to }) => [from, to]))]
+    .filter((end) => end.startsWith(`${machine.path}#use:`) && !traced.has(end))
+    .map((end) => ({ path: machine.main, message: `runs ${end.split(':').pop()}, handed in, but nothing hands over a part by that name: keep a part's name from where it is handed over to where it runs` })))
+}
+
+// A machine starts from its main.py, in its if __name__ == "__main__" block.
+function startedElsewhere(nodes, machines) {
+  const folders = new Set(machines.map((machine) => machine.path))
+  return nodes.filter((file) => file.name === '__main__.py' && folders.has(folderOf(file.path)) && !outside(file))
+    .map((file) => ({ path: file.path, message: 'starts its machine apart from main.py: move this into main.py\'s if __name__ == "__main__" block' }))
 }
 
 // A type's one offering is a class.

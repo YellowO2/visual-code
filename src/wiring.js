@@ -160,7 +160,9 @@ function parameters(list) {
 function partCall(value, parts, instances) {
   for (const [, text] of value.matchAll(CALL)) {
     const [first, ...rest] = text.split('.')
-    const part = parts.get(first) ?? instances.get(first)
+    // An input is run only when called itself; a method on it is using a value.
+    const instance = instances.get(first)
+    const part = parts.get(first) ?? (instance && !(isUsed(instance) && rest.length) ? instance : undefined)
     if (part) return { text, part, builds: parts.has(first) && /^[A-Z]/.test(rest.at(-1) ?? first) }
   }
 }
