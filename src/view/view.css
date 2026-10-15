@@ -148,8 +148,9 @@ button.user {
   stroke-opacity: 0.7;
 }
 
-/* A part used by another, not a value passed: dashed. */
-.react-flow__edge.uses .react-flow__edge-path {
+/* A part used by another, or called by it: not a value passed, so dashed. */
+.react-flow__edge.uses .react-flow__edge-path,
+.react-flow__edge.call .react-flow__edge-path {
   stroke-dasharray: 6 4;
 }
 

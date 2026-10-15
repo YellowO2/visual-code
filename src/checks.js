@@ -23,6 +23,7 @@ export function check(nodes) {
   found.push(...unplaced(nodes, machines))
   found.push(...hidden(nodes, machines))
   found.push(...unshared(nodes))
+  found.push(...reachingInside(nodes))
   if (!machines.length) {
     found.push({ path: nodes[0].path, message: 'no main.py anywhere: nothing says how the parts connect' })
   }
@@ -140,6 +141,27 @@ function handedParts(machines) {
     for (const { from, to, names } of machine.wires) if (from === port) reach(to, names)
   }
   return holders
+}
+
+// A package is a machine with two faces: inside, how it is made; outside, its
+// endpoints, what its __init__ offers. Another package calls it only through
+// those. The project's own top files, which put the packages together, may
+// reach anywhere.
+function reachingInside(nodes) {
+  const packageOf = (path) => path.split('/')[0]
+  const offered = new Map(nodes.filter((node) => node.name === '__init__.py' && node.path.split('/').length === 2)
+    .map((node) => [packageOf(node.path), new Set(node.uses ?? [])]))
+  return nodes
+    .filter((file) => file.uses && file.path.includes('/') && !outside(file) && file.name !== '__init__.py')
+    .flatMap((file) => {
+      const inside = file.uses.filter((path) => {
+        const other = packageOf(path)
+        return other !== packageOf(file.path) && offered.has(other) && !offered.get(other).has(path)
+      })
+      if (!inside.length) return []
+      const names = inside.map((path) => path.slice(path.indexOf('/') + 1)).join(', ')
+      return [{ path: file.path, message: `reaches inside ${packageOf(inside[0])}/ (${names}): use another package only through its endpoints, what its __init__.py offers` }]
+    })
 }
 
 // A type's one offering is a class.

@@ -114,10 +114,10 @@ function Diagram({ tree, opened, toggle, focus, hovered, hover, users }) {
     let current = true
     const lay = (direction) => elk.layout({ id: 'root', layoutOptions: { ...LAYOUT, 'elk.direction': direction },
       ...(() => {
-        // Wires from a job to the very part it was handed cross machines, so they sit at the top.
-        const handed = handedParts(tree)
-        const ctx = { opened, tree, direction, handed }
-        return { children: outermost(tree).map((machine) => elkMachine(machine, ctx)), edges: handedWires(tree, handed, opened) }
+        // Calls cross machines, from a caller to an endpoint, so they sit at the top.
+        const called = calls(tree, opened)
+        const ctx = { opened, tree, direction, endpoints: endpointsOf(called) }
+        return { children: outermost(tree).map((machine) => elkMachine(machine, ctx)), edges: called }
       })() })
     const fit = ({ width, height }) => Math.min(screen.width / width, screen.height / height)
     const choosing = !flow.current || flow.current.screen !== screen
@@ -165,7 +165,7 @@ function Diagram({ tree, opened, toggle, focus, hovered, hover, users }) {
 // kept in the innermost box holding both its ends. A part handed to another is
 // drawn from the one that uses it to the one it uses.
 function elkMachine(machine, ctx) {
-  const { opened, tree, direction, handed } = ctx
+  const { opened, tree } = ctx
   const drawn = drawnBy(machine)
   const boxes = new Map()
   const fill = (folder, into) => {
@@ -179,26 +179,25 @@ function elkMachine(machine, ctx) {
       }
       if (!drawn.has(child.path)) return []
       if (child.wires && opened.has(child.path)) return [elkMachine(child, ctx)]
-      const label = child.wires ? `${child.name} ▸` : child.name
-      return [{ id: child.path, kind: child.wires ? 'machine' : 'part', label, ...size(label) }]
+      if (!child.wires) return [{ id: child.path, kind: 'part', label: child.name, ...size(child.name) }]
+      // A closed machine keeps its ports, so wires to it land where they will when it opens.
+      const label = `${child.name} ▸`
+      return [{ id: child.path, kind: 'machine', label, ...size(label), ports: portsOf(child, ctx),
+        layoutOptions: { 'elk.portConstraints': 'FIXED_SIDE', 'elk.nodeSize.constraints': 'PORTS MINIMUM_SIZE',
+          'elk.nodeSize.minimum': `(${size(label).width}, ${size(label).height})` } }]
     })
   }
   // At least as wide as its description, which the room above its parts was sized for.
-  const box = { id: machine.path, kind: 'frame', edges: [], layoutOptions: { 'elk.padding': padding(headingLines(machine)),
-    'elk.nodeSize.constraints': 'MINIMUM_SIZE', 'elk.nodeSize.minimum': `(${ABOUT_WIDTH + 2 * PAD}, 0)` } }
+  const box = { id: machine.path, kind: 'frame', edges: [], ports: portsOf(machine, ctx),
+    layoutOptions: { 'elk.padding': padding(headingLines(machine)), 'elk.portConstraints': 'FIXED_SIDE',
+      'elk.nodeSize.constraints': 'MINIMUM_SIZE', 'elk.nodeSize.minimum': `(${ABOUT_WIDTH + 2 * PAD}, 0)` } }
   fill(machine, box)
-  const own = [...drawn].filter((end) => end.startsWith(`${machine.path}#`))
-  const walls = own.filter((end) => !end.includes('#use:'))
-  const name = (end) => end.split(':').pop()
-  // A part handed in and run here is the very part it is, when that is on the
-  // page; otherwise a dashed box of its own.
-  const real = (end) => handed.get(end)
-  for (const end of own.filter((end) => end.includes('#use:') && !real(end))) {
-    box.children.push({ id: end, kind: 'used', label: `${name(end)} (handed in)`, ...size(`${name(end)} (handed in)`) })
+  // A part handed in and run here is a box of its own, dashed; its call goes out to the part.
+  for (const end of drawn) {
+    if (!end.startsWith(`${machine.path}#use:`)) continue
+    const label = `${end.split(':').pop()} (handed in)`
+    box.children.push({ id: end, kind: 'used', label, ...size(label) })
   }
-  box.ports = walls.map((end) => ({ id: end, label: name(end), ...size(name(end), 10),
-    layoutOptions: { 'elk.port.side': SIDES[direction][end.includes('#in:') ? 'in' : 'out'] } }))
-  box.layoutOptions['elk.portConstraints'] = 'FIXED_SIDE'
   const holder = (ends) => {
     const owners = ends.map((end) => end.split('#')[0])
     return [...boxes.keys()].sort((a, b) => b.length - a.length).find((path) => owners.every((owner) =>
@@ -206,24 +205,31 @@ function elkMachine(machine, ctx) {
   }
   const edge = (source, target, label, uses) => boxes.get(holder([source, target])).edges.push({
     id: `${source}>${target}`, sources: [source], targets: [target], uses, labels: label ? [{ text: label, ...size(label, 10) }] : [] })
-  // An end that is a part handed in becomes that part, at the port of the value's name.
-  const resolve = (end, kind, names) => (real(end) ? portOf(real(end), kind, names, opened, tree) : portOf(end, kind, names, opened, tree))
   for (const { from, to, names, kind } of machine.wires) {
-    if (kind !== 'uses') {
-      const source = resolve(from, 'out', names)
-      const target = resolve(to, 'in', names)
-      // Wires to a part handed in run to that part itself: see handedWires.
-      if (real(from) || real(to)) continue
-      // A port already names what passes through it.
-      const wall = (end) => /#(in|out):/.test(end)
-      edge(source, target, wall(source) || wall(target) ? '' : names.join(', '))
+    if (kind === 'uses') {
+      // Handing a part over is shown by the calls made to it, where there are any.
+      if (!ctx.endpoints.has(from)) edge(to, from, `uses: ${names.join(', ')}`, true)
       continue
     }
-    // A part handed in is used by the one it is handed to: the line runs from
-    // the user to the part, named by what the user calls it.
-    edge(to, from, `uses: ${names.join(', ')}`, true)
+    const source = portOf(from, 'out', names, tree)
+    const target = portOf(to, 'in', names, tree)
+    // A port already names what passes through it.
+    const wall = (end) => /#(in|out):/.test(end)
+    edge(source, target, wall(source) || wall(target) ? '' : names.join(', '))
   }
   return box
+}
+
+// A machine's ports, open or closed: where values enter and leave, and the
+// endpoints others call.
+function portsOf(machine, { direction, endpoints }) {
+  const sides = SIDES[direction]
+  const port = (id, label, side) => ({ id, label, ...size(label, 10), layoutOptions: { 'elk.port.side': side } })
+  const walls = [...drawnBy(machine)].filter((end) => /#(in|out):/.test(end) && end.startsWith(`${machine.path}#`))
+  return [
+    ...walls.map((end) => port(end, end.split(':').pop(), sides[end.includes('#in:') ? 'in' : 'out'])),
+    ...[...(endpoints.get(machine.path) ?? [])].map((name) => port(`${machine.path}#call:${name}`, `${name}()`, sides.in)),
+  ]
 }
 
 // ELK's result as React Flow nodes, each placed in its parent, and edges along
@@ -249,7 +255,7 @@ function flatten(root, tree) {
     for (const edge of node.edges ?? []) {
       const points = (edge.sections ?? []).flatMap(({ startPoint, bendPoints = [], endPoint }) => [startPoint, ...bendPoints, endPoint])
       edges.push({ id: edge.id, source: edge.sources[0], target: edge.targets[0], type: 'routed',
-        className: edge.uses ? 'uses' : undefined,
+        className: edge.call ? 'call' : edge.uses ? 'uses' : undefined,
         markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 }, data: { points, label: edge.labels?.[0] } })
     }
   }
@@ -418,8 +424,8 @@ async function copy(path) {
   showToast?.(`Copied ${path}`)
 }
 
-// Which part each handed-in part really is, followed up through the main
-// files: a job is handed to a switch, the switch is given the part by a
+// Which part, and which of its functions, each handed-in part really is,
+// followed up through the main files: a job is handed to a switch, the switch is given the part by a
 // name, and that name came in through its machine's wall from further up.
 function handedParts(tree) {
   const machines = []
@@ -432,9 +438,11 @@ function handedParts(tree) {
     if (!parent) return undefined
     const wire = parent.wires.find((w) => w.to === machine.path && w.names.includes(name))
     if (!wire) return undefined
-    if (wire.kind === 'uses') return wire.from
+    if (wire.kind === 'uses') return handedBy(wire, name)
     return wire.from === `${parent.path}#in:${name}` ? arrivedAt(parent, name) : undefined
   }
+  // The part a 'uses' wire hands over under a name, and which of its functions that is.
+  const handedBy = (wire, name) => ({ part: wire.from, endpoint: wire.handed?.[name] ?? name })
   const found = new Map()
   for (const job of machines) {
     for (const end of drawnBy(job)) {
@@ -443,47 +451,40 @@ function handedParts(tree) {
       const parent = parentOf(job.path)
       const switchWire = parent?.wires.find((w) => w.kind === 'uses' && w.from === job.path)
       const given = switchWire && parent.wires.find((w) => w.to === switchWire.to && w.names.includes(name))
-      const part = !given ? undefined : given.kind === 'uses' ? given.from
+      const handed = !given ? undefined : given.kind === 'uses' ? handedBy(given, name)
         : given.from === `${parent.path}#in:${name}` ? arrivedAt(parent, name) : undefined
-      if (part) found.set(end, part)
+      if (handed) found.set(end, handed)
     }
   }
   return found
 }
 
-// The wires between a job and the very part it was handed, drawn whether or
-// not the job is open: an end inside a closed machine shows on that machine's
-// box, as any wire does. They cross machines, so they sit at the top.
-function handedWires(tree, handed, opened) {
+// A project's calls: each part handed in and run inside a machine calls the
+// endpoint of the part it really is. A call starts at the box it shows on (the
+// outermost closed machine holding it) and ends at a fixed point on the
+// called machine's wall, so opening and closing never move its end.
+function calls(tree, opened) {
   const machines = []
   const collect = (node) => { if (node.wires) machines.push(node); node.children?.forEach(collect) }
   collect(tree)
   const top = new Set(outermost(tree).map((machine) => machine.path))
-  // The box an end shows on: the outermost closed machine holding it, or the end itself.
-  const shown = (end) => {
-    const owner = end.split('#')[0]
-    const closed = machines.filter((m) => !top.has(m.path) && !opened.has(m.path) && owner.startsWith(m.path)
-      && (owner !== m.path || end.includes('#')))
-      .sort((a, b) => a.path.length - b.path.length)[0]
-    return closed ? closed.path : end
+  const shown = (end) => machines.filter((m) => !top.has(m.path) && !opened.has(m.path) && end.startsWith(m.path) && end !== m.path)
+    .sort((a, b) => a.path.length - b.path.length)[0]?.path ?? end
+  const found = new Map()
+  for (const [end, { part, endpoint }] of handedParts(tree)) {
+    const source = shown(end)
+    const target = `${part}#call:${endpoint}`
+    found.set(`${source}>${target}`, { id: `${source}>${target}`, sources: [source], targets: [target], call: true, part, endpoint,
+      labels: [{ text: 'calls', ...size('calls', 10) }] })
   }
-  const wires = new Map()
-  for (const job of machines) {
-    for (const { from, to, names, kind } of job.wires) {
-      if (kind === 'uses') continue
-      const into = handed.get(to)
-      const outOf = handed.get(from)
-      if (!into && !outOf) continue
-      const source = outOf ? portOf(outOf, 'out', names, opened, tree) : shown(from)
-      const target = into ? portOf(into, 'in', names, opened, tree) : shown(to)
-      if (source === target) continue
-      const id = `${source}>${target}`
-      const wire = wires.get(id) ?? { id, sources: [source], targets: [target], names: [] }
-      wire.names.push(...names.filter((name) => !wire.names.includes(name)))
-      wires.set(id, wire)
-    }
-  }
-  return [...wires.values()].map(({ names, ...wire }) => ({ ...wire, labels: [{ text: names.join(', '), ...size(names.join(', '), 10) }] }))
+  return [...found.values()]
+}
+
+// The endpoints each machine is called at.
+function endpointsOf(called) {
+  const endpoints = new Map()
+  for (const { part, endpoint } of called) endpoints.set(part, new Set([...(endpoints.get(part) ?? []), endpoint]))
+  return endpoints
 }
 
 // The machines nothing wires: where the diagram starts.
@@ -508,9 +509,11 @@ function drawnBy(machine) {
 }
 
 // A wire that reaches an open machine goes on to the port of the same name on its wall.
-function portOf(end, kind, names, opened, tree) {
+// A wire that reaches a machine goes on to the port of the same name on its wall.
+function portOf(end, kind, names, tree) {
   const port = `${end}#${kind}:${names[0]}`
-  return opened.has(end) && drawnBy(find(tree, end)).has(port) ? port : end
+  const machine = find(tree, end)
+  return machine?.wires && drawnBy(machine).has(port) ? port : end
 }
 
 // What a machine and the machines open inside it do not wire up. Tests,

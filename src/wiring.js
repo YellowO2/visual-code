@@ -81,7 +81,7 @@ export function readWires(source, parts) {
       const label = keywords.get(name) ?? name
       for (const from of writersOf(name)) connect(wires, from, call.part, label)
       // A part handed to another part is used by it: a different kind of wire.
-      if (parts.has(name)) connect(wires, parts.get(name), call.part, label, 'uses')
+      if (parts.has(name)) connect(wires, parts.get(name), call.part, label, 'uses').handed[label] = name
     }
 
     if (!targets) {
@@ -164,12 +164,15 @@ function partCall(value, parts, instances) {
 // A wire joins parts, carrying values, or, of kind 'uses', handing one part to
 // another. One straight from an input port to an output port has no part on
 // it: that is loose logic, and is not drawn.
+// Returns the wire; one that hands parts over also records, under each name it
+// hands a part by, the name the part goes by where it comes from.
 function connect(wires, from, to, name, kind) {
-  if (from === to || (from.startsWith(INPUT) && to.startsWith(OUTPUT))) return
+  if (from === to || (from.startsWith(INPUT) && to.startsWith(OUTPUT))) return { handed: {} }
   const key = `${from}\n${to}\n${kind}`
-  if (!wires.has(key)) wires.set(key, { from, to, names: [], ...(kind && { kind }) })
-  const { names } = wires.get(key)
-  if (!names.includes(name)) names.push(name)
+  if (!wires.has(key)) wires.set(key, { from, to, names: [], ...(kind && { kind, handed: {} }) })
+  const wire = wires.get(key)
+  if (!wire.names.includes(name)) wire.names.push(name)
+  return wire
 }
 
 const names = (list) => list?.replace(/[()]/g, '').split(',').map((name) => name.trim()) ?? []
