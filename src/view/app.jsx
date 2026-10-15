@@ -200,7 +200,8 @@ function elkMachine(machine, opened, tree, direction) {
       const source = portOf(from, 'out', names, opened, tree)
       const target = portOf(to, 'in', names, opened, tree)
       // A port already names what passes through it.
-      edge(source, target, source.includes('#') || target.includes('#') ? '' : names.join(', '))
+      const wall = (end) => /#(in|out):/.test(end)
+      edge(source, target, wall(source) || wall(target) ? '' : names.join(', '))
       continue
     }
     // A part handed in is used by the one it is handed to: the line runs from
