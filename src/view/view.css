@@ -185,7 +185,7 @@ button.user {
 }
 
 .box:hover,
-.user .box {
+.box.user {
   border-color: var(--accent);
   color: var(--accent);
 }

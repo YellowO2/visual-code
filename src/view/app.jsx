@@ -6,6 +6,7 @@ import '@xyflow/react/dist/style.css'
 
 const elk = new ELK()
 const Toggle = createContext()
+const Users = createContext(new Set())
 // Which walls values enter and leave by, for each way the diagram can flow.
 const SIDES = { DOWN: { in: 'NORTH', out: 'SOUTH' }, RIGHT: { in: 'WEST', out: 'EAST' } }
 const SETTLE_MS = 200
@@ -90,14 +91,21 @@ function Diagram({ tree, opened, toggle, focus, hovered, hover, users }) {
   const flow = useRef()
   const box = useRef()
   const { fitView } = useReactFlow()
+  // Only the window changing size counts: the strips below the diagram grow as
+  // machines open, and that must not turn the diagram.
   useEffect(() => {
     let settling
-    const watch = new ResizeObserver(([{ contentRect }]) => {
+    const measure = () => {
+      const { width, height } = box.current.getBoundingClientRect()
+      setScreen({ width, height })
+    }
+    const resized = () => {
       clearTimeout(settling)
-      settling = setTimeout(() => setScreen({ width: contentRect.width, height: contentRect.height }), SETTLE_MS)
-    })
-    watch.observe(box.current)
-    return () => watch.disconnect()
+      settling = setTimeout(measure, SETTLE_MS)
+    }
+    measure()
+    window.addEventListener('resize', resized)
+    return () => window.removeEventListener('resize', resized)
   }, [])
   useEffect(() => {
     if (!screen) return
@@ -125,17 +133,21 @@ function Diagram({ tree, opened, toggle, focus, hovered, hover, users }) {
     return () => clearTimeout(timer)
   }, [laid])
   const touches = (end) => hovered && (end === hovered || end.startsWith(`${hovered}#`))
-  const nodes = laid.nodes.map((node) => ({ ...node, className: users.has(node.id) ? 'user' : '' }))
   const edges = laid.edges.map((edge) => ({ ...edge, className: touches(edge.source) || touches(edge.target) ? 'active' : '' }))
+  // The boxes stay the same objects while the pointer moves: React Flow hides a
+  // box it thinks is new until it has measured it, so remaking them flashes.
+  // Each box reads who uses what is hovered for itself.
   return (
     <Toggle.Provider value={toggle}>
+    <Users.Provider value={users}>
     <div ref={box} className="flow">
-    <ReactFlow nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} edgeTypes={EDGE_TYPES} minZoom={0.1} maxZoom={2}
+    <ReactFlow nodes={laid.nodes} edges={edges} nodeTypes={NODE_TYPES} edgeTypes={EDGE_TYPES} minZoom={0.1} maxZoom={2}
       nodesDraggable={false} nodesConnectable={false} elementsSelectable={false} proOptions={{ hideAttribution: true }}
       onNodeClick={(_, node) => node.type === 'machine' ? toggle(node.id) : ['part', 'port'].includes(node.type) && copy(node.id.split('#')[0])}
       onNodeMouseEnter={(_, node) => hover(node.id)}
       onNodeMouseLeave={() => hover()} />
     </div>
+    </Users.Provider>
     </Toggle.Provider>
   )
 }
@@ -199,15 +211,14 @@ function flatten(root, tree) {
     if (node !== root) {
       const folder = node.kind === 'frame' && find(tree, node.id)
       nodes.push({
-        id: node.id, parentId, type: node.kind, position: { x: node.x, y: node.y },
-        style: { width: node.width, height: node.height },
+        id: node.id, parentId, type: node.kind, position: { x: node.x, y: node.y }, ...sized(node),
         data: folder ? { id: node.id, label: `${folder.name} ▾`, about: folder.about, machine: true }
           : { label: node.label, about: find(tree, node.id)?.about },
       })
     }
     for (const port of node.ports ?? []) {
-      nodes.push({ id: port.id, parentId: node.id, type: 'port', position: { x: port.x, y: port.y },
-        style: { width: port.width, height: port.height }, data: { label: port.label } })
+      nodes.push({ id: port.id, parentId: node.id, type: 'port', position: { x: port.x, y: port.y }, ...sized(port),
+        data: { label: port.label } })
     }
     for (const child of node.children ?? []) visit(child, node === root ? undefined : node.id)
     for (const edge of node.edges ?? []) {
@@ -220,9 +231,16 @@ function flatten(root, tree) {
   return { nodes, edges }
 }
 
-function Part({ data }) {
+// A box's size, given up front: React Flow hides a box until it knows how big
+// it is, so a box it had to measure would blink whenever the layout changes.
+function sized({ width, height }) {
+  return { width, height, measured: { width, height }, style: { width, height } }
+}
+
+function Part({ id, data }) {
+  const users = useContext(Users)
   return (
-    <div className={`box nopan${touchesDisk(data.label) ? ' disk' : ''}`}>
+    <div className={`box nopan${touchesDisk(data.label) ? ' disk' : ''}${users.has(id) ? ' user' : ''}`}>
       <Ends />
       {data.label}
       {data.about && <span className="about">{data.about}</span>}
@@ -230,9 +248,10 @@ function Part({ data }) {
   )
 }
 
-function Machine({ data }) {
+function Machine({ id, data }) {
+  const users = useContext(Users)
   return (
-    <div className="box machine nopan">
+    <div className={`box machine nopan${users.has(id) ? ' user' : ''}`}>
       <Ends />
       {data.label}
       {data.about && <span className="about">{data.about}</span>}
