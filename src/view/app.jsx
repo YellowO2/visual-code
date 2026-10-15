@@ -36,7 +36,6 @@ function App() {
   const [tree, setTree] = useState()
   const [opened, setOpened] = useState()
   const [folded, setFolded] = useState(new Set())
-  const [focus, setFocus] = useState()
   useEffect(() => {
     const source = new EventSource('/events')
     source.addEventListener('reload', () => location.reload())
@@ -52,15 +51,14 @@ function App() {
     const next = new Set(opened)
     next.has(path) ? next.delete(path) : next.add(path)
     setOpened(next)
-    setFocus(next.has(path) ? path : parentMachine(tree, path) ?? null)
   }
   const fold = (key) => setFolded((now) => new Set(now.has(key) ? [...now].filter((k) => k !== key) : [...now, key]))
   return (
-    <Page tree={tree} opened={opened} folded={folded} fold={fold} toggle={toggle} focus={focus} />
+    <Page tree={tree} opened={opened} folded={folded} fold={fold} toggle={toggle} />
   )
 }
 
-function Page({ tree, opened, folded, fold, toggle, focus }) {
+function Page({ tree, opened, folded, fold, toggle }) {
   const [hovered, setHovered] = useState()
   const users = useMemo(() => new Set(hovered ? files(tree).filter((node) => node.uses?.includes(hovered)).map((node) => node.path) : []),
     [tree, hovered])
@@ -71,7 +69,7 @@ function Page({ tree, opened, folded, fold, toggle, focus }) {
       <Warnings list={tree.warnings} folded={folded} fold={fold} />
       <main>
         <ReactFlowProvider>
-          <Diagram tree={tree} opened={opened} toggle={toggle} focus={focus} hovered={hovered} hover={setHovered} users={users} />
+          <Diagram tree={tree} opened={opened} toggle={toggle} hovered={hovered} hover={setHovered} users={users} />
         </ReactFlowProvider>
       </main>
       <footer>
@@ -88,7 +86,7 @@ function Page({ tree, opened, folded, fold, toggle, focus }) {
 // The diagram flows the way that shows it biggest on this screen: down, or
 // right. It is chosen when the page opens and when the window changes size,
 // not when a machine opens, so the diagram never turns under the cursor.
-function Diagram({ tree, opened, toggle, focus, hovered, hover, users }) {
+function Diagram({ tree, opened, toggle, hovered, hover, users }) {
   const [laid, setLaid] = useState({ nodes: [], edges: [] })
   const [screen, setScreen] = useState()
   const flow = useRef()
@@ -131,13 +129,11 @@ function Diagram({ tree, opened, toggle, focus, hovered, hover, users }) {
     }, (failure) => console.error('layout failed', failure))
     return () => { current = false }
   }, [tree, opened, screen])
-  // The view follows what was opened or closed, once its boxes have moved; a
-  // new direction shows the whole diagram.
+  // The view stays where it is as machines open and close; only a new
+  // direction (a new page or window size) shows the whole diagram.
   useEffect(() => {
-    if (!laid.nodes.length || (focus === undefined && !laid.refit)) return
-    // A machine is shown with the ports on its walls.
-    const nodes = !laid.refit && focus ? laid.nodes.filter(({ id }) => id === focus || id.startsWith(`${focus}#`)) : undefined
-    const timer = setTimeout(() => fitView({ nodes, duration: MOVE_MS, padding: 0.1 }), MOVE_MS)
+    if (!laid.nodes.length || !laid.refit) return
+    const timer = setTimeout(() => fitView({ duration: MOVE_MS, padding: 0.1 }), MOVE_MS)
     return () => clearTimeout(timer)
   }, [laid])
   const touches = (end) => hovered && (end === hovered || end.startsWith(`${hovered}#`))
@@ -494,12 +490,6 @@ function outermost(node) {
 // A machine starts with its own machines open, one level deep.
 function ownMachines(machine) {
   return machine.children.flatMap(onShelf).filter((part) => part.wires).map((part) => part.path)
-}
-
-function parentMachine(tree, path) {
-  const holders = (node) => node.wires && path.startsWith(node.path) && node.path !== path
-    ? [node, ...(node.children ?? []).flatMap(holders)] : (node.children ?? []).flatMap(holders)
-  return holders(tree).at(-1)?.path
 }
 
 // What a machine draws: every end of its wires, and every part it calls.
