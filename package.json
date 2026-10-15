@@ -1,0 +1,22 @@
+{
+  "name": "visual-code",
+  "version": "0.1.0",
+  "description": "A live diagram of your project's files and folders.",
+  "type": "module",
+  "bin": {
+    "visual-code": "src/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@xyflow/react": "^12.12.0",
+    "elkjs": "^0.12.0",
+    "esbuild": "^0.28.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "scripts": {
+    "build": "esbuild src/view/app.jsx --bundle --minify --format=esm --jsx=automatic --outfile=src/view/app.js"
+  }
+}

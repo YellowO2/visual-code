@@ -1,0 +1,294 @@
+:root {
+  color-scheme: light dark;
+  --bg: light-dark(#fafafa, #111113);
+  --ink: light-dark(#1c1c1f, #e6e6ea);
+  --muted: light-dark(#6b6b76, #9a9aa6);
+  --line: light-dark(#d9d9df, #2e2e35);
+  --tint: light-dark(rgb(0 0 0 / 0.025), rgb(255 255 255 / 0.03));
+  --chip: light-dark(#fff, #1b1b1f);
+  --accent: light-dark(#2563eb, #7aa2ff);
+  --move: 300ms ease;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* The diagram takes the screen; warnings above it and the strips below it take what they need. */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+main {
+  flex: 1;
+  min-height: 0;
+}
+
+.flow {
+  width: 100%;
+  height: 100%;
+}
+
+aside,
+footer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 8px 16px;
+  overflow: auto;
+}
+
+aside {
+  max-height: 40vh;
+}
+
+footer:empty {
+  display: none;
+}
+
+aside button {
+  border-color: light-dark(#e6c07a, #6b5524);
+  background: light-dark(#fdf6e7, #2a2316);
+}
+
+aside .summary,
+aside b {
+  font-weight: 600;
+}
+
+footer {
+  max-height: 30vh;
+  border-top: 1px solid var(--line);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--chip);
+  text-align: left;
+}
+
+button:hover,
+button.user {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.shelf {
+  color: var(--muted);
+}
+
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.strip::before {
+  width: 7ch;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.strip.tools::before {
+  content: 'tools';
+}
+
+.strip.types::before {
+  content: 'types';
+}
+
+.strip.offered::before {
+  content: 'API';
+}
+
+.strip.unwired::before {
+  content: 'not wired';
+}
+
+.strip.unwired > button {
+  opacity: 0.45;
+}
+
+.strip > .group {
+  border-style: dashed;
+  color: var(--muted);
+}
+
+/* The diagram */
+
+.react-flow {
+  --xy-background-color: var(--bg);
+  font: inherit;
+}
+
+/* Boxes glide to where the layout puts them, and grow or shrink as machines open. */
+.react-flow__node {
+  transition: transform var(--move), width var(--move), height var(--move);
+}
+
+.nopan {
+  cursor: pointer;
+}
+
+.react-flow__edge-path {
+  transition: d var(--move);
+  stroke: var(--muted);
+  stroke-opacity: 0.7;
+}
+
+.react-flow__edge.active .react-flow__edge-path {
+  stroke: var(--accent);
+  stroke-opacity: 1;
+  stroke-width: 2;
+}
+
+.react-flow__handle {
+  visibility: hidden;
+}
+
+.wire-label {
+  fill: var(--muted);
+  font-size: 10px;
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 4px;
+}
+
+.react-flow__edge.active .wire-label {
+  fill: var(--accent);
+}
+
+.box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--chip);
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.box:hover,
+.user .box {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.box.machine {
+  color: var(--accent);
+}
+
+.box.disk {
+  border-style: dashed;
+}
+
+/* What a part does, on hover. */
+.box .about {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 10;
+  width: max-content;
+  max-width: 40ch;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--bg);
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.box:hover .about {
+  opacity: 1;
+}
+
+.react-flow__node:has(.box:hover) {
+  z-index: 1000 !important;
+}
+
+.frame {
+  box-sizing: border-box;
+  height: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--tint);
+}
+
+.frame.shelf {
+  border-style: dashed;
+  background: none;
+}
+
+.frame .heading {
+  display: inline-flex;
+  flex-direction: column;
+  padding: 8px 14px 0;
+  color: var(--muted);
+}
+
+.frame b {
+  font-weight: 600;
+}
+
+.frame.shelf b {
+  font-weight: 400;
+}
+
+.frame small {
+  max-width: 260px;
+  font-size: 11px;
+}
+
+.frame > .heading.nopan:hover b {
+  color: var(--accent);
+}
+
+.port {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 100%;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+output {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  translate: -50%;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--bg);
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+
+output.visible {
+  opacity: 1;
+}
