@@ -112,7 +112,11 @@ function Diagram({ tree, opened, toggle, focus, hovered, hover, users }) {
     if (!screen) return
     let current = true
     const lay = (direction) => elk.layout({ id: 'root', layoutOptions: { ...LAYOUT, 'elk.direction': direction },
-      children: outermost(tree).map((machine) => elkMachine(machine, opened, tree, direction)), edges: [] })
+      ...(() => {
+        // Wires from a job to the very part it was handed cross machines, so they sit at the top.
+        const ctx = { opened, tree, direction, handed: handedParts(tree), across: [] }
+        return { children: outermost(tree).map((machine) => elkMachine(machine, ctx)), edges: ctx.across }
+      })() })
     const fit = ({ width, height }) => Math.min(screen.width / width, screen.height / height)
     const choosing = !flow.current || flow.current.screen !== screen
     const directions = choosing ? Object.keys(SIDES) : [flow.current.direction]
@@ -158,7 +162,8 @@ function Diagram({ tree, opened, toggle, focus, hovered, hover, users }) {
 // machines laid out inside it, its ports on its walls, and one edge per wire,
 // kept in the innermost box holding both its ends. A part handed to another is
 // drawn from the one that uses it to the one it uses.
-function elkMachine(machine, opened, tree, direction) {
+function elkMachine(machine, ctx) {
+  const { opened, tree, direction, handed } = ctx
   const drawn = drawnBy(machine)
   const boxes = new Map()
   const fill = (folder, into) => {
@@ -171,18 +176,22 @@ function elkMachine(machine, opened, tree, direction) {
         return [shelf]
       }
       if (!drawn.has(child.path)) return []
-      if (child.wires && opened.has(child.path)) return [elkMachine(child, opened, tree, direction)]
+      if (child.wires && opened.has(child.path)) return [elkMachine(child, ctx)]
       const label = child.wires ? `${child.name} ▸` : child.name
       return [{ id: child.path, kind: child.wires ? 'machine' : 'part', label, ...size(label) }]
     })
   }
-  const box = { id: machine.path, kind: 'frame', edges: [], layoutOptions: { 'elk.padding': padding(headingLines(machine)) } }
+  // At least as wide as its description, which the room above its parts was sized for.
+  const box = { id: machine.path, kind: 'frame', edges: [], layoutOptions: { 'elk.padding': padding(headingLines(machine)),
+    'elk.nodeSize.constraints': 'MINIMUM_SIZE', 'elk.nodeSize.minimum': `(${ABOUT_WIDTH + 2 * PAD}, 0)` } }
   fill(machine, box)
   const own = [...drawn].filter((end) => end.startsWith(`${machine.path}#`))
   const walls = own.filter((end) => !end.includes('#use:'))
   const name = (end) => end.split(':').pop()
-  // A part handed in and run here is a box of its own, dashed.
-  for (const end of own.filter((end) => end.includes('#use:'))) {
+  // A part handed in and run here is the very part it is, when that is on the
+  // page; otherwise a dashed box of its own.
+  const real = (end) => handed.get(end)
+  for (const end of own.filter((end) => end.includes('#use:') && !real(end))) {
     box.children.push({ id: end, kind: 'used', label: `${name(end)} (handed in)`, ...size(`${name(end)} (handed in)`) })
   }
   box.ports = walls.map((end) => ({ id: end, label: name(end), ...size(name(end), 10),
@@ -195,10 +204,17 @@ function elkMachine(machine, opened, tree, direction) {
   }
   const edge = (source, target, label, uses) => boxes.get(holder([source, target])).edges.push({
     id: `${source}>${target}`, sources: [source], targets: [target], uses, labels: label ? [{ text: label, ...size(label, 10) }] : [] })
+  // An end that is a part handed in becomes that part, at the port of the value's name.
+  const resolve = (end, kind, names) => (real(end) ? portOf(real(end), kind, names, opened, tree) : portOf(end, kind, names, opened, tree))
   for (const { from, to, names, kind } of machine.wires) {
     if (kind !== 'uses') {
-      const source = portOf(from, 'out', names, opened, tree)
-      const target = portOf(to, 'in', names, opened, tree)
+      const source = resolve(from, 'out', names)
+      const target = resolve(to, 'in', names)
+      if (real(from) || real(to)) {
+        ctx.across.push({ id: `${source}>${target}`, sources: [source], targets: [target],
+          labels: [{ text: names.join(', '), ...size(names.join(', '), 10) }] })
+        continue
+      }
       // A port already names what passes through it.
       const wall = (end) => /#(in|out):/.test(end)
       edge(source, target, wall(source) || wall(target) ? '' : names.join(', '))
@@ -401,6 +417,39 @@ function Toast() {
 async function copy(path) {
   await navigator.clipboard.writeText(path)
   showToast?.(`Copied ${path}`)
+}
+
+// Which part each handed-in part really is, followed up through the main
+// files: a job is handed to a switch, the switch is given the part by a
+// name, and that name came in through its machine's wall from further up.
+function handedParts(tree) {
+  const machines = []
+  const collect = (node) => { if (node.wires) machines.push(node); node.children?.forEach(collect) }
+  collect(tree)
+  const parentOf = (path) => machines.filter((m) => path !== m.path && (m.path === '.' || path.startsWith(m.path)))
+    .sort((a, b) => b.path.length - a.path.length)[0]
+  const arrivedAt = (machine, name) => {
+    const parent = parentOf(machine.path)
+    if (!parent) return undefined
+    const wire = parent.wires.find((w) => w.to === machine.path && w.names.includes(name))
+    if (!wire) return undefined
+    if (wire.kind === 'uses') return wire.from
+    return wire.from === `${parent.path}#in:${name}` ? arrivedAt(parent, name) : undefined
+  }
+  const found = new Map()
+  for (const job of machines) {
+    for (const end of drawnBy(job)) {
+      if (!end.startsWith(`${job.path}#use:`)) continue
+      const name = end.split(':').pop()
+      const parent = parentOf(job.path)
+      const switchWire = parent?.wires.find((w) => w.kind === 'uses' && w.from === job.path)
+      const given = switchWire && parent.wires.find((w) => w.to === switchWire.to && w.names.includes(name))
+      const part = !given ? undefined : given.kind === 'uses' ? given.from
+        : given.from === `${parent.path}#in:${name}` ? arrivedAt(parent, name) : undefined
+      if (part) found.set(end, part)
+    }
+  }
+  return found
 }
 
 // The machines nothing wires: where the diagram starts.
