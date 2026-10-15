@@ -115,8 +115,9 @@ function Diagram({ tree, opened, toggle, focus, hovered, hover, users }) {
     const lay = (direction) => elk.layout({ id: 'root', layoutOptions: { ...LAYOUT, 'elk.direction': direction },
       ...(() => {
         // Wires from a job to the very part it was handed cross machines, so they sit at the top.
-        const ctx = { opened, tree, direction, handed: handedParts(tree), across: [] }
-        return { children: outermost(tree).map((machine) => elkMachine(machine, ctx)), edges: ctx.across }
+        const handed = handedParts(tree)
+        const ctx = { opened, tree, direction, handed }
+        return { children: outermost(tree).map((machine) => elkMachine(machine, ctx)), edges: handedWires(tree, handed, opened) }
       })() })
     const fit = ({ width, height }) => Math.min(screen.width / width, screen.height / height)
     const choosing = !flow.current || flow.current.screen !== screen
@@ -211,11 +212,8 @@ function elkMachine(machine, ctx) {
     if (kind !== 'uses') {
       const source = resolve(from, 'out', names)
       const target = resolve(to, 'in', names)
-      if (real(from) || real(to)) {
-        ctx.across.push({ id: `${source}>${target}`, sources: [source], targets: [target],
-          labels: [{ text: names.join(', '), ...size(names.join(', '), 10) }] })
-        continue
-      }
+      // Wires to a part handed in run to that part itself: see handedWires.
+      if (real(from) || real(to)) continue
       // A port already names what passes through it.
       const wall = (end) => /#(in|out):/.test(end)
       edge(source, target, wall(source) || wall(target) ? '' : names.join(', '))
@@ -451,6 +449,41 @@ function handedParts(tree) {
     }
   }
   return found
+}
+
+// The wires between a job and the very part it was handed, drawn whether or
+// not the job is open: an end inside a closed machine shows on that machine's
+// box, as any wire does. They cross machines, so they sit at the top.
+function handedWires(tree, handed, opened) {
+  const machines = []
+  const collect = (node) => { if (node.wires) machines.push(node); node.children?.forEach(collect) }
+  collect(tree)
+  const top = new Set(outermost(tree).map((machine) => machine.path))
+  // The box an end shows on: the outermost closed machine holding it, or the end itself.
+  const shown = (end) => {
+    const owner = end.split('#')[0]
+    const closed = machines.filter((m) => !top.has(m.path) && !opened.has(m.path) && owner.startsWith(m.path)
+      && (owner !== m.path || end.includes('#')))
+      .sort((a, b) => a.path.length - b.path.length)[0]
+    return closed ? closed.path : end
+  }
+  const wires = new Map()
+  for (const job of machines) {
+    for (const { from, to, names, kind } of job.wires) {
+      if (kind === 'uses') continue
+      const into = handed.get(to)
+      const outOf = handed.get(from)
+      if (!into && !outOf) continue
+      const source = outOf ? portOf(outOf, 'out', names, opened, tree) : shown(from)
+      const target = into ? portOf(into, 'in', names, opened, tree) : shown(to)
+      if (source === target) continue
+      const id = `${source}>${target}`
+      const wire = wires.get(id) ?? { id, sources: [source], targets: [target], names: [] }
+      wire.names.push(...names.filter((name) => !wire.names.includes(name)))
+      wires.set(id, wire)
+    }
+  }
+  return [...wires.values()].map(({ names, ...wire }) => ({ ...wire, labels: [{ text: names.join(', '), ...size(names.join(', '), 10) }] }))
 }
 
 // The machines nothing wires: where the diagram starts.
