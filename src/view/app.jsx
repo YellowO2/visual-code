@@ -237,7 +237,7 @@ function portsOf(machine, { direction, endpoints, tree }) {
     && !(end.includes('#in:') && entered(machine, endpoints, tree)))
   return [
     ...walls.map((end) => port(end, end.split(':').pop(), sides[end.includes('#in:') ? 'in' : 'out'])),
-    ...[...(endpoints.get(machine.path) ?? [])].map((name) => port(`${machine.path}#call:${name}`, `${name}()`, sides.in)),
+    ...[...(endpoints.get(machine.path) ?? [])].map((name) => port(`${machine.path}#call:${name}`, signature(machine, name), sides.in)),
   ]
 }
 
@@ -446,23 +446,20 @@ function calls(tree, opened) {
   const shown = (end) => machines.filter((m) => !top.has(m.path) && !opened.has(m.path) && end.startsWith(m.path) && end !== m.path)
     .sort((a, b) => a.path.length - b.path.length)[0]?.path ?? end
   const found = new Map()
-  // What a part handed in is given where it runs: the names on the wires into it.
-  const given = (end) => machines.find((m) => end.startsWith(`${m.path}#`))?.wires
-    .filter((w) => w.to === end).flatMap((w) => w.names) ?? []
-  const call = (from, part, endpoint, passed = []) => {
+  const call = (from, part, endpoint) => {
     const source = shown(from)
     // A machine is called at an endpoint on its wall; a plain part, at its box;
     // either, inside a closed machine, at that machine's box.
     const target = shown(part) !== part ? shown(part) : find(tree, part)?.wires ? `${part}#call:${endpoint}` : part
     // Both ends inside one closed machine: the call is inside it, out of sight.
     if (source === target.split('#')[0] || source === target) return
-    const label = passed.length ? passed.join(', ') : 'calls'
+    // The endpoint names what the call takes.
     found.set(`${source}>${target}`, { id: `${source}>${target}`, sources: [source], targets: [target], call: true, part,
-      endpoint: target === part ? undefined : endpoint, labels: [{ text: label, ...size(label, 10) }] })
+      endpoint: target === part ? undefined : endpoint, labels: [{ text: 'calls', ...size('calls', 10) }] })
   }
   // A part handed in and run inside a machine calls the part it really is.
   const handed = handedParts(machinesIn(tree))
-  for (const [end, { part, endpoint }] of handed) call(end, part, endpoint, given(end))
+  for (const [end, { part, endpoint }] of handed) call(end, part, endpoint)
   // Whoever is handed a part calls it, unless what it does with it is shown
   // already by a call from deeper in.
   const reached = new Set([...handed.values()].map(({ part, endpoint }) => `${part}>${endpoint}`))
@@ -511,6 +508,13 @@ function drawnBy(machine) {
 }
 
 // A wire that reaches an open machine goes on to the port of the same name on its wall.
+// An endpoint as the function it is: its name and what it takes.
+function signature(machine, name) {
+  const run = machinesIn(machine).map((m) => m.children.find((child) => child.path === m.main)?.functions?.[0])
+    .find((f) => f?.name === name)
+  return `${name}(${run ? run.ports.slice(0, run.inputs).join(', ') : ''})`
+}
+
 // Whether a machine is called at its own function, its main.py's.
 function entered(machine, endpoints, tree) {
   const own = find(tree, machine.main)?.functions?.[0]?.name
