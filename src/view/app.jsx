@@ -15,6 +15,7 @@ const LINE = 16
 const PAD = 16
 const ABOUT_WIDTH = 260
 const MOVE_MS = 300
+const PORT_LAYER = 1000
 const TOAST_MS = 1500
 const LAYOUT = {
   'elk.algorithm': 'layered',
@@ -219,8 +220,9 @@ function flatten(root, tree) {
       })
     }
     for (const port of node.ports ?? []) {
+      // A port's name sits over the wires that start or end at it.
       nodes.push({ id: port.id, parentId: node.id, type: 'port', position: { x: port.x, y: port.y }, ...sized(port),
-        data: { label: port.label } })
+        zIndex: PORT_LAYER, data: { label: port.label } })
     }
     for (const child of node.children ?? []) visit(child, node === root ? undefined : node.id)
     for (const edge of node.edges ?? []) {
