@@ -31,6 +31,10 @@ the machine from the code and checks the code against the rules.
      next reads it back). Pass it in memory; read and write files only at the
      edges, in a loader and a saver. A library's main function may leave
      loading and saving to its caller; the loader and saver are still parts.
+     Watch for one hidden inside a cache: a part keeps a file for itself, and
+     a later step goes looking for it (by name pattern or newest date). In the
+     diagram it shows as a model or part wired past the step that made the
+     data; pass the data along instead, and drop any "make it again" fallback.
    - Values that always travel together, the same data passed twice, or data,
      settings and verdicts mixed together (rule 14), in inputs and outputs alike.
    - A part with two jobs: split it. Code nothing calls: delete it.
