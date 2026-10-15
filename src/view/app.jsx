@@ -111,7 +111,7 @@ function Diagram({ tree, opened, toggle, focus, hovered, hover, users }) {
     if (!screen) return
     let current = true
     const lay = (direction) => elk.layout({ id: 'root', layoutOptions: { ...LAYOUT, 'elk.direction': direction },
-      children: outermost(tree).map((machine) => elkMachine(machine, opened, tree, direction, true)), edges: [] })
+      children: outermost(tree).map((machine) => elkMachine(machine, opened, tree, direction)), edges: [] })
     const fit = ({ width, height }) => Math.min(screen.width / width, screen.height / height)
     const choosing = !flow.current || flow.current.screen !== screen
     const directions = choosing ? Object.keys(SIDES) : [flow.current.direction]
@@ -133,7 +133,8 @@ function Diagram({ tree, opened, toggle, focus, hovered, hover, users }) {
     return () => clearTimeout(timer)
   }, [laid])
   const touches = (end) => hovered && (end === hovered || end.startsWith(`${hovered}#`))
-  const edges = laid.edges.map((edge) => ({ ...edge, className: touches(edge.source) || touches(edge.target) ? 'active' : '' }))
+  const edges = laid.edges.map((edge) => ({ ...edge,
+    className: [edge.className, (touches(edge.source) || touches(edge.target)) && 'active'].filter(Boolean).join(' ') }))
   // The boxes stay the same objects while the pointer moves: React Flow hides a
   // box it thinks is new until it has measured it, so remaking them flashes.
   // Each box reads who uses what is hovered for itself.
@@ -153,10 +154,10 @@ function Diagram({ tree, opened, toggle, focus, hovered, hover, users }) {
 }
 
 // A machine as ELK sees it: its parts, inside the shelves they sit on, its open
-// machines laid out inside it, its ports, and one edge per wire, kept in the
-// innermost box holding both its ends. The outermost machine's ports are boxes
-// of their own, held to the first and last rows.
-function elkMachine(machine, opened, tree, direction, outermost = false) {
+// machines laid out inside it, its ports on its walls, and one edge per wire,
+// kept in the innermost box holding both its ends. A part handed to another is
+// drawn from the one that uses it to the one it uses.
+function elkMachine(machine, opened, tree, direction) {
   const drawn = drawnBy(machine)
   const boxes = new Map()
   const fill = (folder, into) => {
@@ -178,26 +179,27 @@ function elkMachine(machine, opened, tree, direction, outermost = false) {
   fill(machine, box)
   const walls = [...drawn].filter((end) => end.startsWith(`${machine.path}#`))
   const name = (end) => end.split(':').pop()
-  if (outermost) {
-    box.children.push(...walls.map((end) => ({ id: end, kind: 'port', label: name(end), ...size(name(end), 10),
-      layoutOptions: { 'elk.layered.layering.layerConstraint': end.includes('#in:') ? 'FIRST' : 'LAST' } })))
-  } else {
-    box.ports = walls.map((end) => ({ id: end, label: name(end), ...size(name(end), 10),
-      layoutOptions: { 'elk.port.side': SIDES[direction][end.includes('#in:') ? 'in' : 'out'] } }))
-    box.layoutOptions['elk.portConstraints'] = 'FIXED_SIDE'
-  }
+  box.ports = walls.map((end) => ({ id: end, label: name(end), ...size(name(end), 10),
+    layoutOptions: { 'elk.port.side': SIDES[direction][end.includes('#in:') ? 'in' : 'out'] } }))
+  box.layoutOptions['elk.portConstraints'] = 'FIXED_SIDE'
   const holder = (ends) => {
     const owners = ends.map((end) => end.split('#')[0])
     return [...boxes.keys()].sort((a, b) => b.length - a.length).find((path) => owners.every((owner) =>
       owner === machine.path ? path === machine.path : path === '.' || (owner.startsWith(path) && owner !== path)))
   }
-  for (const { from, to, names } of machine.wires) {
-    const source = portOf(from, 'out', names, opened, tree)
-    const target = portOf(to, 'in', names, opened, tree)
-    // A port already names what passes through it.
-    const label = source.includes('#') || target.includes('#') ? '' : names.join(', ')
-    boxes.get(holder([source, target])).edges.push({ id: `${source}>${target}`, sources: [source], targets: [target],
-      labels: label ? [{ text: label, ...size(label, 10) }] : [] })
+  const edge = (source, target, label, uses) => boxes.get(holder([source, target])).edges.push({
+    id: `${source}>${target}`, sources: [source], targets: [target], uses, labels: label ? [{ text: label, ...size(label, 10) }] : [] })
+  for (const { from, to, names, kind } of machine.wires) {
+    if (kind !== 'uses') {
+      const source = portOf(from, 'out', names, opened, tree)
+      const target = portOf(to, 'in', names, opened, tree)
+      // A port already names what passes through it.
+      edge(source, target, source.includes('#') || target.includes('#') ? '' : names.join(', '))
+      continue
+    }
+    // A part handed in is used by the one it is handed to: the line runs from
+    // the user to the part, named by what the user calls it.
+    edge(to, from, `uses: ${names.join(', ')}`, true)
   }
   return box
 }
@@ -224,6 +226,7 @@ function flatten(root, tree) {
     for (const edge of node.edges ?? []) {
       const points = (edge.sections ?? []).flatMap(({ startPoint, bendPoints = [], endPoint }) => [startPoint, ...bendPoints, endPoint])
       edges.push({ id: edge.id, source: edge.sources[0], target: edge.targets[0], type: 'routed',
+        className: edge.uses ? 'uses' : undefined,
         markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 }, data: { points, label: edge.labels?.[0] } })
     }
   }

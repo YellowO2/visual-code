@@ -74,8 +74,8 @@ export function readWires(source, parts) {
     for (const name of call ? inputs : []) {
       const label = keywords.get(name) ?? name
       for (const from of writersOf(name)) connect(wires, from, call.part, label)
-      // A part handed to another part is a wire from it.
-      if (parts.has(name)) connect(wires, parts.get(name), call.part, label)
+      // A part handed to another part is used by it: a different kind of wire.
+      if (parts.has(name)) connect(wires, parts.get(name), call.part, label, 'uses')
     }
 
     if (!targets) {
@@ -155,12 +155,13 @@ function partCall(value, parts, instances) {
   }
 }
 
-// A wire joins parts. One straight from an input port to an output port has
-// no part on it: that is loose logic, and is not drawn.
-function connect(wires, from, to, name) {
+// A wire joins parts, carrying values, or, of kind 'uses', handing one part to
+// another. One straight from an input port to an output port has no part on
+// it: that is loose logic, and is not drawn.
+function connect(wires, from, to, name, kind) {
   if (from === to || (from.startsWith(INPUT) && to.startsWith(OUTPUT))) return
-  const key = `${from}\n${to}`
-  if (!wires.has(key)) wires.set(key, { from, to, names: [] })
+  const key = `${from}\n${to}\n${kind}`
+  if (!wires.has(key)) wires.set(key, { from, to, names: [], ...(kind && { kind }) })
   const { names } = wires.get(key)
   if (!names.includes(name)) names.push(name)
 }

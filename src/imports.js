@@ -13,7 +13,8 @@ export function readImports(source, here, find) {
 
   for (const [, module, wrapped, line] of source.matchAll(PY_FROM)) {
     const target = pythonModule(module, here, find)
-    for (const [name, local] of aliases(wrapped ?? line)) {
+    // A comment after a name is not part of it.
+    for (const [name, local] of aliases((wrapped ?? line).replace(/#.*$/gm, ''))) {
       bind(local, (target?.children && find([`${target.path}${name}.py`, `${target.path}${name}/`])) || target)
     }
   }
