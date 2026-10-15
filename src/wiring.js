@@ -15,6 +15,10 @@ const LOOP = /^\s*(?:async\s+)?for\s+(.+?)\s+in\s+(.+):\s*$/s
 const ASSIGNMENT = /^\s*([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*=(?!=)\s*(.+)$/s
 const CALL = /((?:[A-Za-z_]\w*\.)*[A-Za-z_]\w*)\s*\(/g
 const NAME = /[A-Za-z_]\w*/g
+const QUOTED = /(['"])(?:\\.|(?!\1).)*\1/g
+// A name a line reads: not text in quotes, and not a field after a dot.
+const READ = /(?<![.\w])[A-Za-z_]\w*/g
+const valueNames = (text) => text.replace(QUOTED, '""').match(READ) ?? []
 const KEYWORD = /\b([A-Za-z_]\w*)\s*=(?!=)\s*([A-Za-z_]\w*)\s*(?=[,)])/g
 const NOISE = /("""|''')[\s\S]*?\1|#.*|\/\/.*/g
 const BRACKETED = /[[({][^[\](){}]*[\])}]/g
@@ -74,7 +78,7 @@ export function readWires(source, parts) {
     const [, targets, value = statement] = statement.match(LOOP) ?? statement.match(ASSIGNMENT) ?? []
     const call = partCall(value, parts, instances)
     if (call && inFunction) calls.add(call.part)
-    const inputs = new Set(value.replace(call?.text, '').match(NAME))
+    const inputs = new Set(valueNames(value.replace(call?.text, '')))
     // A value passed by keyword (`build=scene_builder`) takes the keyword's name.
     const keywords = new Map([...value.matchAll(KEYWORD)].map(([, keyword, name]) => [name, keyword]))
     for (const name of call ? inputs : []) {

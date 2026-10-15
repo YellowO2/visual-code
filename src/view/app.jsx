@@ -206,11 +206,8 @@ function elkMachine(machine, ctx) {
   const edge = (source, target, label, uses) => boxes.get(holder([source, target])).edges.push({
     id: `${source}>${target}`, sources: [source], targets: [target], uses, labels: label ? [{ text: label, ...size(label, 10) }] : [] })
   for (const { from, to, names, kind } of machine.wires) {
-    if (kind === 'uses') {
-      // Handing a part over is shown by the calls made to it, where there are any.
-      if (!ctx.endpoints.has(from)) edge(to, from, `uses: ${names.join(', ')}`, true)
-      continue
-    }
+    // Handing a part over is how the caller gets hold of it; what shows is the call (see calls).
+    if (kind === 'uses') continue
     const source = portOf(from, 'out', names, tree)
     const target = portOf(to, 'in', names, tree)
     // A port already names what passes through it.
@@ -471,11 +468,30 @@ function calls(tree, opened) {
   const shown = (end) => machines.filter((m) => !top.has(m.path) && !opened.has(m.path) && end.startsWith(m.path) && end !== m.path)
     .sort((a, b) => a.path.length - b.path.length)[0]?.path ?? end
   const found = new Map()
-  for (const [end, { part, endpoint }] of handedParts(tree)) {
-    const source = shown(end)
-    const target = `${part}#call:${endpoint}`
-    found.set(`${source}>${target}`, { id: `${source}>${target}`, sources: [source], targets: [target], call: true, part, endpoint,
-      labels: [{ text: 'calls', ...size('calls', 10) }] })
+  const call = (from, part, endpoint) => {
+    const source = shown(from)
+    // A machine is called at an endpoint on its wall; a plain part, at its box;
+    // either, inside a closed machine, at that machine's box.
+    const target = shown(part) !== part ? shown(part) : find(tree, part)?.wires ? `${part}#call:${endpoint}` : part
+    // Both ends inside one closed machine: the call is inside it, out of sight.
+    if (source === target.split('#')[0] || source === target) return
+    found.set(`${source}>${target}`, { id: `${source}>${target}`, sources: [source], targets: [target], call: true, part,
+      endpoint: target === part ? undefined : endpoint, labels: [{ text: 'calls', ...size('calls', 10) }] })
+  }
+  // A part handed in and run inside a machine calls the part it really is.
+  const handed = handedParts(tree)
+  for (const [end, { part, endpoint }] of handed) call(end, part, endpoint)
+  // Whoever is handed a part calls it, unless what it does with it is shown
+  // already by a call from deeper in.
+  const reached = new Set([...handed.values()].map(({ part, endpoint }) => `${part}>${endpoint}`))
+  for (const machine of machines) {
+    for (const wire of machine.wires) {
+      if (wire.kind !== 'uses') continue
+      for (const name of wire.names) {
+        const endpoint = wire.handed?.[name] ?? name
+        if (!reached.has(`${wire.from}>${endpoint}`)) call(wire.to, wire.from, endpoint)
+      }
+    }
   }
   return [...found.values()]
 }
@@ -483,7 +499,7 @@ function calls(tree, opened) {
 // The endpoints each machine is called at.
 function endpointsOf(called) {
   const endpoints = new Map()
-  for (const { part, endpoint } of called) endpoints.set(part, new Set([...(endpoints.get(part) ?? []), endpoint]))
+  for (const { part, endpoint } of called) if (endpoint) endpoints.set(part, new Set([...(endpoints.get(part) ?? []), endpoint]))
   return endpoints
 }
 
