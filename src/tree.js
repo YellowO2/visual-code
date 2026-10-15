@@ -90,6 +90,8 @@ function wire(root, folder, find) {
   const end = (id) => (isPort(id) || isUsed(id) ? `${folder.path}#${id}` : id)
   const { wires, calls, work, functions } = readWires(source, named)
   folder.main = main.path
+  // The one operation the machine offers: its main function.
+  folder.operation = functions[0]?.name
   folder.about = title(source)
   folder.wires = wires.map((wire) => ({ ...wire, from: end(wire.from), to: end(wire.to) }))
   folder.calls = calls

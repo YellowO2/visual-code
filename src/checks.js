@@ -28,6 +28,7 @@ export function check(nodes) {
   found.push(...reachingInside(nodes))
   found.push(...untraced(machines))
   found.push(...unfed(nodes, machines))
+  found.push(...otherOperations(machines))
   found.push(...startedElsewhere(nodes, machines))
   if (!machines.length) {
     found.push({ path: nodes[0].path, message: 'no main.py anywhere: nothing says how the parts connect' })
@@ -200,6 +201,27 @@ function unfed(nodes, machines) {
     return inputs.filter((name) => !given.has(name)).map((name) => ({ path: machine.main,
       message: `input ${name} is never given by that name: nothing calls this machine and no wire from ${parent.main} carries a value called ${name}; give the value one name on both sides of the wall` }))
   })
+}
+
+// A machine offers one operation, its main.py's function. Called at another,
+// it holds a second operation its main.py does not show: a package offering
+// several operations is a shelf of machines, one for each.
+function otherOperations(machines) {
+  const byPath = new Map(machines.map((machine) => [machine.path, machine]))
+  const own = (machine) => machine.operation
+  const handed = [
+    ...[...handedParts(machines).values()],
+    ...machines.flatMap((m) => m.wires.filter((w) => w.kind === 'uses')
+      .flatMap((w) => w.names.map((name) => ({ part: w.from, endpoint: w.handed?.[name] ?? name })))),
+  ]
+  const found = new Map()
+  for (const { part, endpoint } of handed) {
+    const machine = byPath.get(part)
+    if (!machine || !own(machine) || own(machine) === endpoint) continue
+    found.set(`${part}${endpoint}`, { path: machine.main,
+      message: `called at ${endpoint}, which this main.py does not run: a machine offers one operation, its main.py's function; make ${endpoint} a machine of its own beside this one` })
+  }
+  return [...found.values()]
 }
 
 // A machine starts from its main.py, in its if __name__ == "__main__" block.
