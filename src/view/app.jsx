@@ -72,21 +72,14 @@ function Diagram({ tree, opened, toggle, focus, hovered, hover, users }) {
   const flow = useRef()
   const box = useRef()
   const { fitView } = useReactFlow()
-  // Only the window changing size counts: the strips below the diagram grow as
-  // machines open, and that must not turn the diagram.
   useEffect(() => {
     let settling
-    const measure = () => {
-      const { width, height } = box.current.getBoundingClientRect()
-      setScreen({ width, height })
-    }
-    const resized = () => {
+    const watch = new ResizeObserver(([{ contentRect }]) => {
       clearTimeout(settling)
-      settling = setTimeout(measure, SETTLE_MS)
-    }
-    measure()
-    window.addEventListener('resize', resized)
-    return () => window.removeEventListener('resize', resized)
+      settling = setTimeout(() => setScreen({ width: contentRect.width, height: contentRect.height }), SETTLE_MS)
+    })
+    watch.observe(box.current)
+    return () => watch.disconnect()
   }, [])
   useEffect(() => {
     if (!screen) return
