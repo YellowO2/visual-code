@@ -2,19 +2,12 @@
 
 **Understand your project visually when coding with AI**
 
-AI writes code fast, and you lose track of what it built. This project provides:
+A problem with agentic coding is losing control and understanding of the project when you move too fast. This aims to facilitate understanding of your project visually through visual diagrams when coding. It does so by:
 
-1. **A live diagram of your code.** Folders are machines, files are parts, and lines are values passing between them.
-2. **Rules a linter checks.** They keep the code in a pattern similar to flow based programming.
+1. Providing a live diagram of your code.
+2. A set of rules and linter checks to enforce the code in a pattern similar to flow based programming.
 
-![The UI's jobs calling the engine's two operations](showcase/14-two-operations.jpg)
-
-## The idea
-
-A folder is a component, where `main.py` defines wirings.
-Full rules: [`RULES.md`](RULES.md). They borrow from [flow-based programming](https://jpaulm.github.io/fbp/), dependency injection and [ports and adapters](https://alistair.cockburn.us/hexagonal-architecture/).
-
-## Before and after
+## Before and after applying
 
 | Before | After |
 |---|---|
@@ -38,7 +31,7 @@ For Claude Code, add the skill:
 ln -s "$PWD/skill/visual-code" ~/.claude/skills/visual-code
 ```
 
-Python projects only, for now.
+Python projects only for now.
 
 ## License
 
