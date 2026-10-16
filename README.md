@@ -22,30 +22,23 @@ Full rules: [`RULES.md`](RULES.md). They borrow from [flow-based programming](ht
 
 ## Use
 
-> Set up visual-code from https://github.com/YellowO2/visual-code, then use it to restructure this project.
-
-Python projects only, for now.
-
-<details>
-<summary>Setup steps (your agent follows these)</summary>
-
 Needs Node 20+.
 
 ```bash
 git clone https://github.com/YellowO2/visual-code.git
 cd visual-code && npm link
+
+visual-code <project>          # live diagram at localhost:4400
+visual-code check <project>    # rule breaks as path:line
+```
+
+For Claude Code, add the skill:
+
+```bash
 ln -s "$PWD/skill/visual-code" ~/.claude/skills/visual-code
 ```
 
-Then `visual-code <project>` shows the diagram and `visual-code check <project>` lists rule breaks.
-
-</details>
-
-## Develop
-
-```bash
-npm install && npm run build
-```
+Python projects only, for now.
 
 ## License
 
