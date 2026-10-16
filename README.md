@@ -22,8 +22,6 @@ Full rules: [`RULES.md`](RULES.md). They borrow from [flow-based programming](ht
 
 ## Use
 
-Tell your AI agent:
-
 > Set up visual-code from https://github.com/YellowO2/visual-code, then use it to restructure this project.
 
 Python projects only, for now.
