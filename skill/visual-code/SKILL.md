@@ -11,14 +11,14 @@ the machine from the code and checks the code against the rules.
 
 ## Tools
 
-- Rules: `RULES.md` at the repository root. Read them first.
+- Rules: `visual-code rules` prints them. Read them first.
 - Check: `visual-code check <project>` prints each rule break as
   `path:line  message` and exits 0 when there are none.
 - Diagram: `visual-code <project>` serves it at http://localhost:4400 (pick
   another with `--port`). Show it to the user after a change: they judge the
   structure by looking at it.
-- If `visual-code` is not found (it is linked into one Node version), use
-  `node <repo>/src/cli.js` in its place.
+- If `visual-code` is not found, it is not installed on this machine: ask the
+  user to install it (see the visual-code README) rather than guessing a path.
 
 ## Workflow
 

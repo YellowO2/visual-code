@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { serve } from './server.js'
@@ -8,6 +9,12 @@ const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: { port: { type: 'string', short: 'p', default: '4400' } },
 })
+
+// The rules a project is drawn and checked by, for a person or an agent to read.
+if (positionals[0] === 'rules') {
+  process.stdout.write(readFileSync(new URL('../RULES.md', import.meta.url), 'utf8'))
+  process.exit(0)
+}
 
 const checking = positionals[0] === 'check'
 const root = resolve(positionals[checking ? 1 : 0] ?? '.')
