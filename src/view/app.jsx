@@ -4,10 +4,12 @@ import { createRoot } from 'react-dom/client'
 import { BaseEdge, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider, useReactFlow } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { handedParts } from '../handed.js'
+import { ModelPanel } from './model.jsx'
 
 const elk = new ELK()
 const Toggle = createContext()
 const Users = createContext(new Set())
+const OpenModel = createContext(() => {})
 // Which walls values enter and leave by, for each way the diagram can flow.
 const SIDES = { DOWN: { in: 'NORTH', out: 'SOUTH' }, RIGHT: { in: 'WEST', out: 'EAST' } }
 const SETTLE_MS = 200
@@ -60,6 +62,7 @@ function App() {
 
 function Page({ tree, opened, folded, fold, toggle }) {
   const [hovered, setHovered] = useState()
+  const [model, setModel] = useState()
   const users = useMemo(() => new Set(hovered ? files(tree).filter((node) => node.uses?.includes(hovered)).map((node) => node.path) : []),
     [tree, hovered])
   const offered = useMemo(() => new Set(files(tree).filter((file) => file.path.split('/').length === 2 && file.name === '__init__.py')
@@ -68,9 +71,12 @@ function Page({ tree, opened, folded, fold, toggle }) {
     <>
       <Warnings list={tree.warnings} folded={folded} fold={fold} />
       <main>
+        <OpenModel.Provider value={setModel}>
         <ReactFlowProvider>
           <Diagram tree={tree} opened={opened} toggle={toggle} hovered={hovered} hover={setHovered} users={users} />
         </ReactFlowProvider>
+        </OpenModel.Provider>
+        {model && <ModelPanel path={model} close={() => setModel()} />}
       </main>
       <footer>
         {outermost(tree).flatMap((machine) => ['tools', 'types', 'offered', 'unwired'].map((kind) => (
@@ -176,7 +182,8 @@ function elkMachine(machine, ctx) {
       }
       if (!drawn.has(child.path)) return []
       if (child.wires && opened.has(child.path)) return [elkMachine(child, ctx)]
-      if (!child.wires) return [{ id: child.path, kind: 'part', label: child.name, ...size(child.name) }]
+      // A part with a model has a button beside its name, so its box is that much wider.
+      if (!child.wires) return [{ id: child.path, kind: 'part', label: child.name, ...size(child.model ? `${child.name} model ` : child.name) }]
       // A closed machine keeps its ports, so wires to it land where they will when it opens.
       const label = `${child.name} ▸`
       return [{ id: child.path, kind: 'machine', label, ...size(label), ports: portsOf(child, ctx),
@@ -248,7 +255,7 @@ function flatten(root, tree) {
       nodes.push({
         id: node.id, parentId, type: node.kind, position: { x: node.x, y: node.y }, ...sized(node),
         data: folder ? { id: node.id, label: `${folder.name} ▾`, about: folder.about, machine: true }
-          : { label: node.label, about: find(tree, node.id)?.about },
+          : { label: node.label, about: find(tree, node.id)?.about, model: find(tree, node.id)?.model },
       })
     }
     for (const port of node.ports ?? []) {
@@ -276,10 +283,16 @@ function sized({ width, height }) {
 
 function Part({ id, data }) {
   const users = useContext(Users)
+  const openModel = useContext(OpenModel)
   return (
     <div className={`box nopan${touchesDisk(data.label) ? ' disk' : ''}${users.has(id) ? ' user' : ''}`}>
       <Ends />
       {data.label}
+      {data.model && (
+        <button className="model-open" title="Show the model inside" onClick={(event) => { event.stopPropagation(); openModel(id) }}>
+          model
+        </button>
+      )}
       {data.about && <span className="about">{data.about}</span>}
     </div>
   )

@@ -33,6 +33,22 @@ ln -s "$PWD/skill/visual-code" ~/.claude/skills/visual-code
 
 Python projects only for now.
 
+### Seeing inside a model
+
+A file that offers `_example()`, returning a built PyTorch model and a tuple
+of example inputs, gets a **model** button on its box. It opens the model
+drawn the way papers draw networks (fully connected layers, embeddings,
+recurrent layers, convolutions, transformer blocks), with each block's sizes,
+what goes in and out, its parameters and the comment next to it in the code
+on hover. The model runs once on the example inputs to read this, in the
+Python given by `--python` (or `VISUAL_CODE_PYTHON`; default `python3`), which
+must be able to import the project.
+
+```python
+def _example():
+    return Brain(hidden=64), (torch.zeros(1, 75, 76), torch.zeros(1, 75, dtype=torch.long))
+```
+
 ## License
 
 MIT

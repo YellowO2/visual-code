@@ -7,7 +7,11 @@ import { readTree } from './tree.js'
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
-  options: { port: { type: 'string', short: 'p', default: '4400' } },
+  options: {
+    port: { type: 'string', short: 'p', default: '4400' },
+    // The Python that can import the project's models, for the model view.
+    python: { type: 'string', default: process.env.VISUAL_CODE_PYTHON ?? 'python3' },
+  },
 })
 
 // The rules a project is drawn and checked by, for a person or an agent to read.
@@ -26,7 +30,7 @@ if (checking) {
   process.exit(warnings.length ? 1 : 0)
 }
 
-const server = serve(root, Number(values.port))
+const server = serve(root, Number(values.port), values.python)
 
 server.on('listening', () => {
   console.log(`${root}\nhttp://localhost:${server.address().port}`)

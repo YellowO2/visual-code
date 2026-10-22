@@ -304,3 +304,119 @@ output {
 output.visible {
   opacity: 1;
 }
+
+/* A model part opened: a panel over the diagram's lower part, the network drawn inside. */
+.model-open {
+  margin-left: 8px;
+  padding: 0 6px;
+  font-size: 10px;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.model-panel {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  max-height: 60vh;
+  overflow: auto;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--chip);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.18);
+  --m-fc: light-dark(#0f7f74, #4cc4b6);
+  --m-fc-soft: light-dark(#dff1ee, #173a37);
+  --m-table: light-dark(#3550c8, #8ea2ff);
+  --m-table-soft: light-dark(#e1e6fb, #1f2748);
+  --m-loop: light-dark(#c46a12, #f0a050);
+  --m-loop-soft: light-dark(#fbe9d6, #3d2a15);
+}
+
+.model-panel header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.model-panel header b {
+  font-size: 13px;
+}
+
+.model-panel header span {
+  color: var(--muted);
+}
+
+.model-panel header button {
+  margin-left: auto;
+}
+
+.model-about {
+  margin: 0;
+  color: var(--muted);
+}
+
+.model-error {
+  margin: 0;
+  white-space: pre-wrap;
+  color: light-dark(#a33, #f88);
+}
+
+.model-figure {
+  overflow-x: auto;
+}
+
+.model-figure svg {
+  display: block;
+  max-width: none;
+}
+
+.m-icon { stroke-width: 1.6; }
+.m-linear, .m-transformer { fill: var(--m-fc-soft); stroke: var(--m-fc); }
+.m-table, .m-conv { fill: var(--m-table-soft); stroke: var(--m-table); }
+.m-recurrent { fill: var(--m-loop-soft); stroke: var(--m-loop); }
+.m-other { fill: var(--chip); stroke: var(--muted); }
+.m-norm { fill: var(--muted); }
+.m-sub { fill: var(--chip); stroke: var(--m-fc); stroke-width: 1; }
+.m-grid { stroke: var(--m-table); stroke-width: 0.8; }
+.m-loop { fill: none; stroke: var(--m-loop); stroke-width: 1.6; }
+.m-wire { fill: none; stroke: var(--muted); stroke-width: 1.4; }
+.m-arrow { fill: var(--muted); }
+.m-join { fill: var(--chip); stroke: var(--muted); stroke-width: 1.4; }
+.m-plus { font-size: 15px; text-anchor: middle; fill: var(--ink); }
+.m-small { font-size: 11px; text-anchor: middle; fill: var(--ink); }
+.m-label { font-size: 11.5px; text-anchor: middle; fill: var(--ink); }
+.m-hit { fill: transparent; }
+.m-block { outline: none; }
+.m-block:hover .m-icon,
+.m-block:focus .m-icon { stroke-width: 2.6; }
+
+.m-tip {
+  position: fixed;
+  z-index: 30;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  background: var(--chip);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+  pointer-events: none;
+}
+
+.m-tip b {
+  color: var(--accent);
+}
+
+.m-names {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}

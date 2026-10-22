@@ -114,7 +114,9 @@ function describe(root, file, find) {
   const here = file.path.slice(0, file.path.length - file.name.length)
   const uses = [...new Set(readImports(source, here, find).values())].filter((path) => path !== file.path)
   const runs = /__name__\s*==\s*['"]__main__['"]/.test(source)
-  return { about: title(source), defines, uses, runs, handed: handedRuns(source) }
+  // A file that can build an example of its model can be opened to show it.
+  const model = /\.py$/.test(file.name) && /^def _example\(/m.test(source)
+  return { about: title(source), defines, uses, runs, handed: handedRuns(source), ...(model && { model }) }
 }
 
 function onShelf(node) {
