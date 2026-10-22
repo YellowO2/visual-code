@@ -4,12 +4,12 @@ import { createRoot } from 'react-dom/client'
 import { BaseEdge, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider, useReactFlow } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { handedParts } from '../handed.js'
-import { ModelPanel } from './model.jsx'
+import { Network, amount, layoutNetwork } from './model.jsx'
 
 const elk = new ELK()
 const Toggle = createContext()
 const Users = createContext(new Set())
-const OpenModel = createContext(() => {})
+const ToggleModel = createContext(() => {})
 // Which walls values enter and leave by, for each way the diagram can flow.
 const SIDES = { DOWN: { in: 'NORTH', out: 'SOUTH' }, RIGHT: { in: 'WEST', out: 'EAST' } }
 const SETTLE_MS = 200
@@ -62,7 +62,18 @@ function App() {
 
 function Page({ tree, opened, folded, fold, toggle }) {
   const [hovered, setHovered] = useState()
-  const [model, setModel] = useState()
+  // Model parts opened to show their network, and the networks read so far.
+  const [shownModels, setShownModels] = useState(new Set())
+  const [models, setModels] = useState(new Map())
+  const asked = useRef(new Set())
+  const toggleModel = (path) => {
+    setShownModels((now) => new Set(now.has(path) ? [...now].filter((p) => p !== path) : [...now, path]))
+    if (asked.current.has(path)) return
+    asked.current.add(path)
+    setModels((now) => new Map(now).set(path, { loading: true }))
+    fetch(`/model?path=${encodeURIComponent(path)}`).then((r) => r.json()).catch((error) => ({ error: String(error) }))
+      .then((model) => setModels((now) => new Map(now).set(path, model)))
+  }
   const users = useMemo(() => new Set(hovered ? files(tree).filter((node) => node.uses?.includes(hovered)).map((node) => node.path) : []),
     [tree, hovered])
   const offered = useMemo(() => new Set(files(tree).filter((file) => file.path.split('/').length === 2 && file.name === '__init__.py')
@@ -71,12 +82,12 @@ function Page({ tree, opened, folded, fold, toggle }) {
     <>
       <Warnings list={tree.warnings} folded={folded} fold={fold} />
       <main>
-        <OpenModel.Provider value={setModel}>
+        <ToggleModel.Provider value={toggleModel}>
         <ReactFlowProvider>
-          <Diagram tree={tree} opened={opened} toggle={toggle} hovered={hovered} hover={setHovered} users={users} />
+          <Diagram tree={tree} opened={opened} toggle={toggle} hovered={hovered} hover={setHovered} users={users}
+            models={models} shownModels={shownModels} />
         </ReactFlowProvider>
-        </OpenModel.Provider>
-        {model && <ModelPanel path={model} close={() => setModel()} />}
+        </ToggleModel.Provider>
       </main>
       <footer>
         {outermost(tree).flatMap((machine) => ['tools', 'types', 'offered', 'unwired'].map((kind) => (
@@ -92,7 +103,7 @@ function Page({ tree, opened, folded, fold, toggle }) {
 // The diagram flows the way that shows it biggest on this screen: down, or
 // right. It is chosen when the page opens and when the window changes size,
 // not when a machine opens, so the diagram never turns under the cursor.
-function Diagram({ tree, opened, toggle, hovered, hover, users }) {
+function Diagram({ tree, opened, toggle, hovered, hover, users, models, shownModels }) {
   const [laid, setLaid] = useState({ nodes: [], edges: [] })
   const [screen, setScreen] = useState()
   const flow = useRef()
@@ -121,7 +132,7 @@ function Diagram({ tree, opened, toggle, hovered, hover, users }) {
       ...(() => {
         // Calls cross machines, from a caller to an endpoint, so they sit at the top.
         const called = calls(tree, opened)
-        const ctx = { opened, tree, direction, endpoints: endpointsOf(called) }
+        const ctx = { opened, tree, direction, endpoints: endpointsOf(called), models, shownModels }
         return { children: outermost(tree).map((machine) => elkMachine(machine, ctx)), edges: called }
       })() })
     const fit = ({ width, height }) => Math.min(screen.width / width, screen.height / height)
@@ -131,10 +142,10 @@ function Diagram({ tree, opened, toggle, hovered, hover, users }) {
       if (!current) return
       const best = results.reduce((a, b) => (fit(b) > fit(a) ? b : a))
       if (choosing) flow.current = { screen, direction: directions[results.indexOf(best)] }
-      setLaid({ ...flatten(best, tree), refit: choosing })
+      setLaid({ ...flatten(best, tree, { models, shownModels }), refit: choosing })
     }, (failure) => console.error('layout failed', failure))
     return () => { current = false }
-  }, [tree, opened, screen])
+  }, [tree, opened, screen, models, shownModels])
   // The view stays where it is as machines open and close; only a new
   // direction (a new page or window size) shows the whole diagram.
   useEffect(() => {
@@ -182,8 +193,8 @@ function elkMachine(machine, ctx) {
       }
       if (!drawn.has(child.path)) return []
       if (child.wires && opened.has(child.path)) return [elkMachine(child, ctx)]
-      // A part with a model has a button beside its name, so its box is that much wider.
-      if (!child.wires) return [{ id: child.path, kind: 'part', label: child.name, ...size(child.model ? `${child.name} model ` : child.name) }]
+      // A part with a model has a button beside its name; opened, its box holds the network.
+      if (!child.wires) return [{ id: child.path, kind: 'part', label: child.name, ...partSize(child, ctx) }]
       // A closed machine keeps its ports, so wires to it land where they will when it opens.
       const label = `${child.name} ▸`
       return [{ id: child.path, kind: 'machine', label, ...size(label), ports: portsOf(child, ctx),
@@ -246,7 +257,7 @@ function portsOf(machine, { direction, endpoints, tree }) {
 
 // ELK's result as React Flow nodes, each placed in its parent, and edges along
 // ELK's routes.
-function flatten(root, tree) {
+function flatten(root, tree, { models, shownModels }) {
   const nodes = []
   const edges = []
   const visit = (node, parentId) => {
@@ -255,7 +266,8 @@ function flatten(root, tree) {
       nodes.push({
         id: node.id, parentId, type: node.kind, position: { x: node.x, y: node.y }, ...sized(node),
         data: folder ? { id: node.id, label: `${folder.name} ▾`, about: folder.about, machine: true }
-          : { label: node.label, about: find(tree, node.id)?.about, model: find(tree, node.id)?.model },
+          : { label: node.label, about: find(tree, node.id)?.about, model: find(tree, node.id)?.model,
+            shown: shownModels.has(node.id), network: models.get(node.id) },
       })
     }
     for (const port of node.ports ?? []) {
@@ -283,19 +295,53 @@ function sized({ width, height }) {
 
 function Part({ id, data }) {
   const users = useContext(Users)
-  const openModel = useContext(OpenModel)
+  const toggleModel = useContext(ToggleModel)
+  const button = data.model && (
+    <button className="model-open" title={data.shown ? 'Hide the model' : 'Show the model inside'}
+      onClick={(event) => { event.stopPropagation(); toggleModel(id) }}>
+      {data.shown ? 'model ▾' : 'model ▸'}
+    </button>
+  )
+  if (data.shown) {
+    const { network } = data
+    return (
+      <div className={`box model-box nopan${users.has(id) ? ' user' : ''}`}>
+        <Ends />
+        <div className="model-head">
+          <span>{data.label}</span>
+          {button}
+          {network?.name && <span className="model-name">{network.name}</span>}
+          {network?.params !== undefined && <span className="model-name">{amount(network.params)} parameters</span>}
+        </div>
+        {network?.loading && <span className="about">Running the model once to read it…</span>}
+        {network?.error && <pre className="model-error">{network.error}</pre>}
+        {network?.blocks && <Network network={layoutNetwork(network)} name={network.name} />}
+      </div>
+    )
+  }
   return (
     <div className={`box nopan${touchesDisk(data.label) ? ' disk' : ''}${users.has(id) ? ' user' : ''}`}>
       <Ends />
       {data.label}
-      {data.model && (
-        <button className="model-open" title="Show the model inside" onClick={(event) => { event.stopPropagation(); openModel(id) }}>
-          model
-        </button>
-      )}
+      {button}
       {data.about && <span className="about">{data.about}</span>}
     </div>
   )
+}
+
+// A part's box: its name, with room for a model button, or, with its model
+// shown, the network drawn inside.
+function partSize(part, { models, shownModels }) {
+  if (!part.model) return size(part.name)
+  if (!shownModels?.has(part.path)) return size(`${part.name} model ▸ `)
+  const model = models.get(part.path)
+  const head = size(`${part.name} model ▾ ${model?.name ?? ''} ${model?.params ? 'xxx.xM parameters' : ''}`)
+  if (model?.blocks) {
+    const network = layoutNetwork(model)
+    return { width: Math.max(network.width + 2 * PAD, head.width), height: network.height + head.height + PAD }
+  }
+  if (model?.error) return { width: 520, height: 140 }
+  return { width: head.width + 40, height: head.height + LINE + PAD }
 }
 
 function Used({ data }) {

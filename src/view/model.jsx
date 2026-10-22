@@ -1,66 +1,40 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { createPortal } from 'react-dom'
 
-// A model part opened: its blocks drawn the way papers draw networks, with
-// what each block is on hover. The blocks come from the server, which runs the
-// file's _example() once in Python (model_view.py).
+// A model part opened in the diagram: its blocks drawn the way papers draw
+// networks, with what each block is on hover. The blocks come from the
+// server, which runs the file's _example() once in Python (model_view.py).
 const W = 104
 const H = 74
 const GAP = 26
 const STEP = 34
 const NICK = { Linear: 'FC', Embedding: 'Emb', TransformerBlock: 'Transformer', LayerNorm: 'LN', PointEncoder: 'Conv enc' }
 
-export function ModelPanel({ path, close }) {
-  const [model, setModel] = useState()
-  const [tip, setTip] = useState()
-  useEffect(() => {
-    setModel()
-    fetch(`/model?path=${encodeURIComponent(path)}`).then((r) => r.json()).then(setModel, (error) => setModel({ error: String(error) }))
-  }, [path])
-  useEffect(() => {
-    const onKey = (event) => event.key === 'Escape' && close()
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [close])
-  return (
-    <section className="model-panel" aria-label={`Model in ${path}`}>
-      <header>
-        <b>{model?.name ?? path}</b>
-        {model?.params !== undefined && <span>{amount(model.params)} parameters</span>}
-        <span className="model-path">{path}</span>
-        <button onClick={close} aria-label="Close">close</button>
-      </header>
-      {model?.about && <p className="model-about">{model.about}</p>}
-      {!model && <p className="model-about">Running the model once to read it…</p>}
-      {model?.error && <pre className="model-error">{model.error}</pre>}
-      {model?.blocks && <Network model={model} show={setTip} />}
-      {tip && <Tip {...tip} />}
-    </section>
-  )
-}
-
+// Where every block and line goes, and how big the drawing is: the diagram
+// sizes the part's box from this before laying it out.
 // Blocks used before the main one (attention or recurrent) are its inputs:
 // grouped by kind and stacked, joining at a ⊕. The rest follow it; a last run
 // of several output layers fans out.
-function Network({ model, show }) {
+export function layoutNetwork(model) {
   const blocks = model.blocks.filter((b) => b.used)
   let main = blocks.findIndex((b) => model.main.includes(b.kind))
   if (main < 0) main = blocks.length
   const before = byKind(blocks.slice(0, main))
   const after = blocks.slice(main)
   const heads = after.length > 1 && after.at(-1).kind === 'Linear' && after.at(-1).count > 1 ? after.pop() : undefined
-  const columnHeight = Math.max(before.length, 1) * (H + GAP)
-  const height = Math.max(columnHeight, heads ? heads.count * (H + 14) : 0, H + 60)
-  const middle = height / 2 - H / 2
+  const columnHeight = Math.max(before.length, 1) * (H + GAP) - GAP
+  const height = Math.max(columnHeight, heads ? heads.count * (H + 14) : 0, H) + 24
+  const middle = (height - 24) / 2 - H / 2
   const placed = []
   const lines = []
-  let x = 20
-  const top = (height - columnHeight) / 2
+  let x = 0
+  const top = (height - 24 - columnHeight) / 2
   before.forEach((b, i) => placed.push({ b, x, y: top + i * (H + GAP) }))
   if (before.length) {
     const join = x + W + 52
-    for (const { y } of placed) lines.push({ d: `M${x + W} ${y + H / 2} C${join - 20} ${y + H / 2} ${join - 20} ${middle + H / 2} ${join - 11} ${middle + H / 2}` })
-    x = join + 30
+    for (const { y } of placed) lines.push({ d: `M${x + W - 8} ${y + H / 2} C${join - 20} ${y + H / 2} ${join - 20} ${middle + H / 2} ${join - 11} ${middle + H / 2}` })
     placed.push({ join: true, x: join, y: middle + H / 2 })
+    x = join + 30
   }
   for (const [i, b] of after.entries()) {
     if (i) lines.push({ d: `M${x - STEP + 6} ${middle + H / 2} H${x + 8}`, arrow: true })
@@ -69,41 +43,49 @@ function Network({ model, show }) {
     x += W + STEP
   }
   if (heads) {
+    const line = heads.line.split('; ')
     heads.names.forEach((name, k) => {
       const y = middle + (k - (heads.count - 1) / 2) * (H + 14)
       lines.push({ d: `M${x - STEP + 6} ${middle + H / 2} C${x - 4} ${middle + H / 2} ${x - 10} ${y + H / 2} ${x + 8} ${y + H / 2}`, arrow: true })
-      const line = heads.line.split('; ')
       placed.push({ b: { ...heads, count: 1, names: [name], line: line[k] ?? heads.line, params: Math.round(heads.params / heads.count) }, x: x + 10, y })
     })
     x += W + STEP
   }
-  const width = Math.max(x + 10, 420)
+  return { width: Math.max(x - STEP + 10, W), height, placed, lines }
+}
+
+// The network inside the part's box.
+export function Network({ network, name }) {
+  const [tip, setTip] = useState()
   return (
-    <div className="model-figure">
-      <svg viewBox={`0 0 ${width} ${height + 30}`} width={width} height={height + 30} role="img" aria-label={`${model.name} as blocks`}>
+    <>
+      <svg className="model-network" viewBox={`0 0 ${network.width} ${network.height}`} width={network.width} height={network.height}
+        role="img" aria-label={`${name} as blocks`}>
         <defs>
           <marker id="model-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
             <path d="M0 0 L10 5 L0 10 z" className="m-arrow" />
           </marker>
         </defs>
-        {lines.map(({ d, arrow }) => <path key={d} d={d} className="m-wire" markerEnd={arrow ? 'url(#model-arrow)' : undefined} />)}
-        {placed.map((p, i) => p.join ? (
+        {network.lines.map(({ d, arrow }) => <path key={d} d={d} className="m-wire" markerEnd={arrow ? 'url(#model-arrow)' : undefined} />)}
+        {network.placed.map((p, i) => p.join ? (
           <g key={`join${i}`}>
             <circle cx={p.x} cy={p.y} r="11" className="m-join" />
             <text x={p.x} y={p.y + 5} className="m-plus">+</text>
           </g>
         ) : (
           <g key={p.b.names.join()} className="m-block" tabIndex="0"
-            onPointerMove={(e) => show({ block: p.b, x: e.clientX, y: e.clientY })} onPointerLeave={() => show()}
-            onFocus={(e) => { const r = e.currentTarget.getBoundingClientRect(); show({ block: p.b, x: r.right, y: r.top }) }}
-            onBlur={() => show()}>
+            onPointerMove={(e) => setTip({ block: p.b, x: e.clientX, y: e.clientY })} onPointerLeave={() => setTip()}
+            onFocus={(e) => { const r = e.currentTarget.getBoundingClientRect(); setTip({ block: p.b, x: r.right, y: r.top }) }}
+            onBlur={() => setTip()}>
             <Icon kind={p.b.kind} x={p.x} y={p.y} />
             <text x={p.x + W / 2} y={p.y + H + 15} className="m-label">{label(p.b)}</text>
             <rect x={p.x} y={p.y} width={W} height={H + 20} className="m-hit" />
           </g>
         ))}
       </svg>
-    </div>
+      {/* The diagram is drawn in a moving, scaled layer; the note sits above all of it. */}
+      {tip && createPortal(<Tip {...tip} />, document.body)}
+    </>
   )
 }
 
@@ -184,6 +166,6 @@ function label(b) {
   return `${b.count > 1 ? `${b.count}× ` : ''}${text}`
 }
 
-function amount(n) {
+export function amount(n) {
   return n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n)
 }

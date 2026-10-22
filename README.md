@@ -36,8 +36,8 @@ Python projects only for now.
 ### Seeing inside a model
 
 A file that offers `_example()`, returning a built PyTorch model and a tuple
-of example inputs, gets a **model** button on its box. It opens the model
-drawn the way papers draw networks (fully connected layers, embeddings,
+of example inputs, gets a **model** button on its box. It opens the box in
+place, in the diagram, to the model drawn the way papers draw networks (fully connected layers, embeddings,
 recurrent layers, convolutions, transformer blocks), with each block's sizes,
 what goes in and out, its parameters and the comment next to it in the code
 on hover. The model runs once on the example inputs to read this, in the

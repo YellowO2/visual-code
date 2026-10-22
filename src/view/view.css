@@ -305,7 +305,7 @@ output.visible {
   opacity: 1;
 }
 
-/* A model part opened: a panel over the diagram's lower part, the network drawn inside. */
+/* A model part: a button beside its name; opened, the box holds the network drawn inside. */
 .model-open {
   margin-left: 8px;
   padding: 0 6px;
@@ -314,22 +314,13 @@ output.visible {
   color: var(--accent);
 }
 
-.model-panel {
-  position: fixed;
-  left: 16px;
-  right: 16px;
-  bottom: 16px;
-  max-height: 60vh;
-  overflow: auto;
-  z-index: 20;
+.model-box {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 14px;
-  background: var(--chip);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 10px 30px rgb(0 0 0 / 0.18);
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 8px 16px;
   --m-fc: light-dark(#0f7f74, #4cc4b6);
   --m-fc-soft: light-dark(#dff1ee, #173a37);
   --m-table: light-dark(#3550c8, #8ea2ff);
@@ -338,43 +329,31 @@ output.visible {
   --m-loop-soft: light-dark(#fbe9d6, #3d2a15);
 }
 
-.model-panel header {
+.model-head {
   display: flex;
-  flex-wrap: wrap;
   align-items: baseline;
-  gap: 4px 12px;
+  gap: 8px;
+  white-space: nowrap;
 }
 
-.model-panel header b {
-  font-size: 13px;
+.model-head .model-open {
+  margin-left: 0;
 }
 
-.model-panel header span {
+.model-name {
   color: var(--muted);
 }
 
-.model-panel header button {
-  margin-left: auto;
-}
-
-.model-about {
-  margin: 0;
-  color: var(--muted);
+.model-network {
+  display: block;
+  max-width: none;
 }
 
 .model-error {
   margin: 0;
+  max-width: 480px;
   white-space: pre-wrap;
   color: light-dark(#a33, #f88);
-}
-
-.model-figure {
-  overflow-x: auto;
-}
-
-.model-figure svg {
-  display: block;
-  max-width: none;
 }
 
 .m-icon { stroke-width: 1.6; }
