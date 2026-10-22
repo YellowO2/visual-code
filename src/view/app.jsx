@@ -1,5 +1,6 @@
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import { BaseEdge, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider, useReactFlow } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
@@ -273,14 +274,15 @@ function flatten(root, tree, { models, shownModels }) {
     for (const port of node.ports ?? []) {
       // A port's name sits over the wires that start or end at it.
       nodes.push({ id: port.id, parentId: node.id, type: 'port', position: { x: port.x, y: port.y }, ...sized(port),
-        zIndex: PORT_LAYER, data: { label: port.label } })
+        zIndex: PORT_LAYER, data: { label: port.label, about: portAbout(port.id, tree) } })
     }
     for (const child of node.children ?? []) visit(child, node === root ? undefined : node.id)
     for (const edge of node.edges ?? []) {
       const points = (edge.sections ?? []).flatMap(({ startPoint, bendPoints = [], endPoint }) => [startPoint, ...bendPoints, endPoint])
       edges.push({ id: edge.id, source: edge.sources[0], target: edge.targets[0], type: 'routed',
         className: edge.call ? 'call' : edge.uses ? 'uses' : undefined,
-        markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 }, data: { points, label: edge.labels?.[0] } })
+        markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
+        data: { points, label: edge.labels?.[0], about: edge.labels?.[0] && valuesAbout(edge.labels[0].text, tree) } })
     }
   }
   visit(root)
@@ -383,6 +385,7 @@ function Port({ data }) {
     <div className="port nopan">
       <Ends />
       {data.label}
+      {data.about && <span className="about">{data.about}</span>}
     </div>
   )
 }
@@ -402,15 +405,21 @@ function Ends() {
 }
 
 function Routed({ data, markerEnd }) {
+  const [note, setNote] = useState()
   const path = data.points.map(({ x, y }, i) => `${i ? 'L' : 'M'}${x},${y}`).join(' ')
-  const { label } = data
+  const { label, about } = data
   return (
     <>
       <BaseEdge path={path} markerEnd={markerEnd} />
       {label && (
-        <text className="wire-label" x={label.x + label.width / 2} y={label.y + label.height / 2} dominantBaseline="middle"
-          textAnchor="middle">{label.text}</text>
+        <text className={`wire-label${about ? ' explained' : ''}`} x={label.x + label.width / 2} y={label.y + label.height / 2}
+          dominantBaseline="middle" textAnchor="middle"
+          onPointerMove={(e) => about && setNote({ x: e.clientX, y: e.clientY })} onPointerLeave={() => setNote()}>
+          {label.text}
+        </text>
       )}
+      {/* What the value is, from its type: above the moving, scaled diagram. */}
+      {note && createPortal(<div className="value-note" style={{ left: note.x + 12, top: note.y + 12 }}>{about}</div>, document.body)}
     </>
   )
 }
@@ -633,6 +642,41 @@ function headingLines(folder) {
 
 function padding(lines) {
   return `[top=${lines * LINE + PAD},left=${PAD},bottom=${PAD},right=${PAD}]`
+}
+
+// What a machine's port carries: the opening line of the type it is declared
+// with (`history: History` -> History's file).
+function portAbout(id, tree) {
+  const [machinePath, end] = id.split('#')
+  const name = end?.split(':').pop()
+  const machine = find(tree, machinePath)
+  const type = machine?.portTypes?.[name]
+  return (type && typeAbout(tree).get(type)) || typeAbout(tree).get(camel(name))
+}
+
+// What the values on a wire are: each name's type, by the port it matches or
+// the type named after it (`decision` -> Decision).
+function valuesAbout(text, tree) {
+  const notes = text.split(', ').map((name) => {
+    const typed = files(tree).map((f) => f.portTypes?.[name]).find(Boolean) ?? machinesIn(tree).map((m) => m.portTypes?.[name]).find(Boolean)
+    const about = typeAbout(tree).get(typed ?? camel(name))
+    return about && (text.includes(',') ? `${name}: ${about}` : about)
+  }).filter(Boolean)
+  return notes.join('\n') || undefined
+}
+
+// Each type of the project (a file offering one class) and its opening line.
+const typeNotes = new WeakMap()
+function typeAbout(tree) {
+  if (!typeNotes.has(tree)) {
+    typeNotes.set(tree, new Map(files(tree).filter((f) => f.defines?.length === 1 && f.defines[0].kind === 'class' && f.about)
+      .map((f) => [f.defines[0].name, f.about])))
+  }
+  return typeNotes.get(tree)
+}
+
+function camel(name) {
+  return (name ?? '').split('_').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join('')
 }
 
 function find(node, path) {

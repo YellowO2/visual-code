@@ -33,6 +33,13 @@ ln -s "$PWD/skill/visual-code" ~/.claude/skills/visual-code
 
 Python projects only for now.
 
+### What a value is
+
+Hovering a machine's port, or a wire's name, shows what the value is: the
+opening line of its type's file. A port's type comes from the `main.py`
+signature (`history: History`); a wire's from the port of the same name, or
+the type named after it (`decision` -> `Decision`).
+
 ### Seeing inside a model
 
 A file that offers `_example()`, returning a built PyTorch model and a tuple

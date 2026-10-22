@@ -227,8 +227,54 @@ button.user {
   transition: opacity 0.15s;
 }
 
-.box:hover .about {
+.box:hover .about,
+.port:hover .about {
   opacity: 1;
+}
+
+/* A port explains what it carries, like a box explains what it does. */
+.port {
+  position: relative;
+}
+
+.port .about {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 10;
+  width: max-content;
+  max-width: 40ch;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 12px;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.react-flow__node:has(.port:hover) {
+  z-index: 2000 !important;
+}
+
+/* A wire's name explains its values on hover. */
+.wire-label.explained {
+  cursor: help;
+  pointer-events: all;
+}
+
+.value-note {
+  position: fixed;
+  z-index: 3000;
+  max-width: 40ch;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--bg);
+  white-space: pre-line;
+  pointer-events: none;
 }
 
 /* A hovered box, and the note it shows, sit above everything, port names too. */
