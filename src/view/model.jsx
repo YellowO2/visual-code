@@ -13,8 +13,9 @@ const NICK = { Linear: 'FC', Embedding: 'Emb', TransformerBlock: 'Transformer', 
 // Where every block and line goes, and how big the drawing is: the diagram
 // sizes the part's box from this before laying it out.
 // Blocks used before the main one (attention or recurrent) are its inputs:
-// grouped by kind and stacked, joining at a ⊕. The rest follow it; a last run
-// of several output layers fans out.
+// grouped by kind and stacked, joining at a ⊕. The rest follow it, a repeated
+// pattern of them in a frame marked with its times; a last run of several
+// output layers fans out.
 export function layoutNetwork(model) {
   const blocks = model.blocks.filter((b) => b.used)
   let main = blocks.findIndex((b) => model.main.includes(b.kind))
@@ -23,7 +24,8 @@ export function layoutNetwork(model) {
   const after = blocks.slice(main)
   const heads = after.length > 1 && after.at(-1).kind === 'Linear' && after.at(-1).count > 1 ? after.pop() : undefined
   const columnHeight = Math.max(before.length, 1) * (H + GAP) - GAP
-  const height = Math.max(columnHeight, heads ? heads.count * (H + 14) : 0, H) + 24
+  const pad = after.some((b) => b.times) ? 36 : 0
+  const height = Math.max(columnHeight, heads ? heads.count * (H + 14) : 0, H + pad) + 24
   const middle = (height - 24) / 2 - H / 2
   const placed = []
   const lines = []
@@ -40,6 +42,8 @@ export function layoutNetwork(model) {
     if (i) lines.push({ d: `M${x - STEP + 6} ${middle + H / 2} H${x + 8}`, arrow: true })
     else if (before.length) lines.push({ d: `M${x - 19} ${middle + H / 2} H${x + 8}`, arrow: true })
     placed.push({ b, x: x + 10, y: middle })
+    if (b.times && after[i - 1]?.cycle !== b.cycle) placed.push({ frame: true, times: b.times, x: x + 2, y: middle - 18, width: 0, height: H + 40 })
+    if (b.times) placed.findLast((p) => p.frame).width = x + W + 18 - placed.findLast((p) => p.frame).x
     x += W + STEP
   }
   if (heads) {
@@ -67,7 +71,13 @@ export function Network({ network, name }) {
           </marker>
         </defs>
         {network.lines.map(({ d, arrow }) => <path key={d} d={d} className="m-wire" markerEnd={arrow ? 'url(#model-arrow)' : undefined} />)}
-        {network.placed.map((p, i) => p.join ? (
+        {network.placed.filter((p) => p.frame).map((p) => (
+          <g key={`frame${p.x}`}>
+            <rect x={p.x} y={p.y} width={p.width} height={p.height} rx="10" className="m-frame" />
+            <text x={p.x + p.width - 8} y={p.y + 14} className="m-times">{`${p.times}×`}</text>
+          </g>
+        ))}
+        {network.placed.filter((p) => !p.frame).map((p, i) => p.join ? (
           <g key={`join${i}`}>
             <circle cx={p.x} cy={p.y} r="11" className="m-join" />
             <text x={p.x} y={p.y + 5} className="m-plus">+</text>

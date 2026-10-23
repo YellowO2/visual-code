@@ -413,6 +413,8 @@ output.visible {
 .m-loop { fill: none; stroke: var(--m-loop); stroke-width: 1.6; }
 .m-wire { fill: none; stroke: var(--muted); stroke-width: 1.4; }
 .m-arrow { fill: var(--muted); }
+.m-frame { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 5 4; }
+.m-times { font-size: 12px; text-anchor: end; fill: var(--ink); font-weight: 600; }
 .m-join { fill: var(--chip); stroke: var(--muted); stroke-width: 1.4; }
 .m-plus { font-size: 15px; text-anchor: middle; fill: var(--ink); }
 .m-small { font-size: 11px; text-anchor: middle; fill: var(--ink); }

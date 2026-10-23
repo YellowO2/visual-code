@@ -5,7 +5,8 @@
 The file offers `_example()`, returning (model, inputs): a built model and a
 tuple of example inputs. The model runs once on them; each block records when
 it was first used and what went in and came out. Repeated blocks fold into one
-with a count, plain layers get their sizes, dropout and activations are left
+with a count, a repeating pattern of blocks into one pass marked with how
+many times it repeats, plain layers get their sizes, dropout and activations are left
 out, and each block carries the comment written next to it in the code.
 """
 import importlib
@@ -155,7 +156,29 @@ def blocks(model, seen):
             'note': comment(model, names[0].split('.')[0], c), 'used': bool(used),
         })
         i = j
-    return out
+    return cycles(out)
+
+
+def cycles(out):
+    """A pattern of blocks repeated back to back, folded into its first pass;
+    each block in it is marked with the times and which pattern it is in."""
+    key = lambda b: (b['kind'], b['count'], b['params'], b['line'], b['used'])
+    folded, i = [], 0
+    while i < len(out):
+        best = (1, 1)
+        for p in range(2, (len(out) - i) // 2 + 1):
+            k = 1
+            while i + (k + 1) * p <= len(out) and all(key(out[i + k * p + q]) == key(out[i + q]) for q in range(p)):
+                k += 1
+            if k > 1 and k * p > best[0] * best[1]:
+                best = (k, p)
+        k, p = best
+        for q in range(p):
+            runs = [out[i + r * p + q] for r in range(k)]
+            b = dict(runs[0], names=[n for r in runs for n in r['names']], params=sum(r['params'] for r in runs))
+            folded.append(dict(b, times=k, cycle=i) if k > 1 else b)
+        i += k * p
+    return folded
 
 
 def main(root, path):
