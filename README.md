@@ -7,11 +7,9 @@ A problem with agentic coding is losing control and understanding of the project
 1. Providing a live diagram of your code.
 2. A set of rules and linter checks to enforce the code in a pattern similar to flow based programming.
 
-## Before and after applying
+## Example
 
-| Before | After |
-|---|---|
-| ![](showcase/02-panoramic-first-wires-15-inputs.jpg) | ![](showcase/06-panoramic-after-2-in-2-out.jpg) |
+![panoramic-da3 drawn by visual-code](showcase/15-panoramic-new-render.jpg)
 
 ## Use
 
