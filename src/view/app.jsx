@@ -33,6 +33,9 @@ const LAYOUT = {
   'elk.spacing.portPort': '8',
   'elk.edgeLabels.inline': 'true',
 }
+// Columns slide together wherever the wires allow. ELK reads it from each box
+// that holds others, not from the root, so every such box is given it.
+const COMPACT = { 'elk.layered.compaction.postCompaction.strategy': 'EDGE_LENGTH' }
 
 // The project as the server reads it: folders, files and how main files wire them.
 function App() {
@@ -129,13 +132,13 @@ function Diagram({ tree, opened, toggle, hovered, hover, users, models, shownMod
   useEffect(() => {
     if (!screen) return
     let current = true
-    const lay = (direction) => elk.layout({ id: 'root', layoutOptions: { ...LAYOUT, 'elk.direction': direction },
+    const lay = (direction) => elk.layout(everywhere({ id: 'root', layoutOptions: { ...LAYOUT, 'elk.direction': direction },
       ...(() => {
         // Calls cross machines, from a caller to an endpoint, so they sit at the top.
         const called = calls(tree, opened)
         const ctx = { opened, tree, direction, endpoints: endpointsOf(called), models, shownModels }
         return { children: outermost(tree).map((machine) => elkMachine(machine, ctx)), edges: called }
-      })() })
+      })() }))
     const fit = ({ width, height }) => Math.min(screen.width / width, screen.height / height)
     const choosing = !flow.current || flow.current.screen !== screen
     const directions = choosing ? Object.keys(SIDES) : [flow.current.direction]
@@ -173,6 +176,12 @@ function Diagram({ tree, opened, toggle, hovered, hover, users, models, shownMod
     </Users.Provider>
     </Toggle.Provider>
   )
+}
+
+function everywhere(node) {
+  if (node.children?.length) node.layoutOptions = { ...node.layoutOptions, ...COMPACT }
+  for (const child of node.children ?? []) everywhere(child)
+  return node
 }
 
 // A machine as ELK sees it: its parts, inside the shelves they sit on, its open
@@ -220,7 +229,7 @@ function elkMachine(machine, ctx) {
       owner === machine.path ? path === machine.path : path === '.' || (owner.startsWith(path) && owner !== path)))
   }
   const edge = (source, target, label, uses) => boxes.get(holder([source, target])).edges.push({
-    id: `${source}>${target}`, sources: [source], targets: [target], uses, labels: label ? [{ text: label, ...size(label, 10) }] : [] })
+    id: `${source}>${target}`, sources: [source], targets: [target], uses, labels: label ? [{ text: label, ...wireLabel(label) }] : [] })
   for (const { from, to, names, kind } of machine.wires) {
     // Handing a part over is how the caller gets hold of it; what shows is the call (see calls).
     if (kind === 'uses') continue
@@ -519,7 +528,7 @@ function calls(tree, opened) {
     if (source === target.split('#')[0] || source === target) return
     // The endpoint names what the call takes.
     found.set(`${source}>${target}`, { id: `${source}>${target}`, sources: [source], targets: [target], call: true, part,
-      endpoint: target === part ? undefined : endpoint, labels: [{ text: 'calls', ...size('calls', 10) }] })
+      endpoint: target === part ? undefined : endpoint, labels: [{ text: 'calls', ...wireLabel('calls') }] })
   }
   // A part handed in and run inside a machine calls the part it really is.
   const handed = handedParts(machinesIn(tree))
@@ -630,6 +639,11 @@ function onShelf(node) {
 // Loaders and savers, where the system meets the disk, by their names.
 function touchesDisk(name) {
   return /^(load|save)|(Loader|Saver)$/i.test(name.replace(/\.[^.]+$/, ''))
+}
+
+// A wire's label is bare text on the wire, so it takes its own width and no more.
+function wireLabel(text) {
+  return { width: text.length * CHARACTER * (10 / 12) + 8, height: 14 }
 }
 
 function size(text, fontSize = 12) {
