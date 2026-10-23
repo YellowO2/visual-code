@@ -237,14 +237,14 @@ button.user {
   position: relative;
 }
 
-.fed {
-  position: absolute;
-  bottom: calc(100% + 1px);
-  left: 4px;
+.stub {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 10px;
   white-space: nowrap;
-  pointer-events: none;
 }
 
 .port .about {

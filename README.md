@@ -36,8 +36,8 @@ Python projects only for now.
 ### Shared values
 
 A value that goes to four places or more, like the settings, is not drawn as
-wires: each place it goes says where it comes from, as `← settings` over its
-box.
+long wires: each place it goes gets a short one, from a label naming where it
+comes from (`settings, Hardware ─▸ learn.py`).
 
 ### What a value is
 
