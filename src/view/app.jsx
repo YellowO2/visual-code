@@ -528,6 +528,7 @@ function calls(tree, opened) {
   // already by a call from deeper in.
   const reached = new Set([...handed.values()].map(({ part, endpoint }) => `${part}>${endpoint}`))
   for (const machine of machines) {
+    for (const { from, to } of machine.models ?? []) call(from, to)
     for (const wire of machine.wires) {
       if (wire.kind !== 'uses') continue
       for (const name of wire.names) {

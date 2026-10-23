@@ -18,6 +18,7 @@ export function readTree(root) {
   for (const folder of nodes) if (folder.children) wire(root, folder, find)
   for (const file of nodes) if (SOURCE.test(file.name)) Object.assign(file, describe(root, file, find))
   tree.warnings = check(nodes)
+  for (const folder of nodes) if (folder.wires) drawModels(folder)
   return sorted(tree)
 }
 
@@ -117,6 +118,16 @@ function describe(root, file, find) {
   // A file that can build an example of its model can be opened to show it.
   const model = /\.py$/.test(file.name) && /^def _example\(/m.test(source)
   return { about: title(source), defines, uses, runs, handed: handedRuns(source), ...(model && { model }) }
+}
+
+// A model is drawn, not shelved as a type: a part of a machine that can show
+// its network, and that a part the machine draws uses, is a box the user calls.
+function drawModels(machine) {
+  const parts = machine.children.filter((child) => child.path !== machine.main).flatMap(onShelf)
+  const drawn = new Set([...machine.wires.flatMap(({ from, to }) => [from, to]), ...machine.calls])
+  machine.models = parts.filter((part) => part.model && !drawn.has(part.path)).flatMap((model) =>
+    parts.filter((part) => drawn.has(part.path) && part.uses?.includes(model.path)).map((user) => ({ from: user.path, to: model.path })))
+  machine.calls = [...new Set([...machine.calls, ...machine.models.map(({ to }) => to)])]
 }
 
 function onShelf(node) {
