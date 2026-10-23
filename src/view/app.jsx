@@ -187,6 +187,7 @@ function Diagram({ tree, opened, toggle, hovered, hover, users, models, shownMod
 
 // The wires of every value that goes to SHARED places or more, cut short: each
 // place gets a small box beside it naming where its shared values come from.
+// Values from outside the program are not drawn at all.
 function unwire(root) {
   const all = []
   const parent = new Map()
@@ -199,6 +200,12 @@ function unwire(root) {
     for (const child of node.children ?? []) { parent.set(child.id, node); visit(child) }
   }
   visit(root)
+  // What enters the program from outside, like its settings, is not drawn:
+  // no part hands it over, so it says nothing about how the parts work together.
+  const outside = new Set((root.children ?? []).flatMap((m) => (m.ports ?? []).filter((p) => p.id.includes('#in:')).map((p) => p.id)))
+  for (const [node, e] of all) if (outside.has(e.sources[0])) node.edges = node.edges.filter((x) => x !== e)
+  for (const m of root.children ?? []) m.ports = (m.ports ?? []).filter((p) => !outside.has(p.id))
+  all.splice(0, all.length, ...all.filter(([, e]) => !outside.has(e.sources[0])))
   const count = new Map()
   for (const [, e] of all) if (!e.call) count.set(e.sources[0], (count.get(e.sources[0]) ?? 0) + 1)
   const fed = new Map()

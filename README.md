@@ -37,7 +37,8 @@ Python projects only for now.
 
 A value that goes to four places or more, like the settings, is not drawn as
 long wires: each place it goes gets a short one, from a label naming where it
-comes from (`settings, Hardware ─▸ learn.py`).
+comes from (`Loaders, Hardware ─▸ learn.py`). What enters the program from
+outside, like its settings, is not drawn at all: no part hands it over.
 
 ### What a value is
 
