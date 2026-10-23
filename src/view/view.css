@@ -237,6 +237,16 @@ button.user {
   position: relative;
 }
 
+.fed {
+  position: absolute;
+  bottom: calc(100% + 1px);
+  left: 4px;
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .port .about {
   position: absolute;
   top: calc(100% + 6px);

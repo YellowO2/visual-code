@@ -33,6 +33,12 @@ ln -s "$PWD/skill/visual-code" ~/.claude/skills/visual-code
 
 Python projects only for now.
 
+### Shared values
+
+A value that goes to four places or more, like the settings, is not drawn as
+wires: each place it goes says where it comes from, as `← settings` over its
+box.
+
 ### What a value is
 
 Hovering a machine's port, or a wire's name, shows what the value is: the

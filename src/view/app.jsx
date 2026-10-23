@@ -36,6 +36,9 @@ const LAYOUT = {
 // Columns slide together wherever the wires allow. ELK reads it from each box
 // that holds others, not from the root, so every such box is given it.
 const COMPACT = { 'elk.layered.compaction.postCompaction.strategy': 'EDGE_LENGTH' }
+// A value going to this many places or more, like the settings, is not drawn
+// as wires: each place it goes says where it comes from instead.
+const SHARED = 4
 
 // The project as the server reads it: folders, files and how main files wire them.
 function App() {
@@ -132,13 +135,17 @@ function Diagram({ tree, opened, toggle, hovered, hover, users, models, shownMod
   useEffect(() => {
     if (!screen) return
     let current = true
-    const lay = (direction) => elk.layout(everywhere({ id: 'root', layoutOptions: { ...LAYOUT, 'elk.direction': direction },
-      ...(() => {
-        // Calls cross machines, from a caller to an endpoint, so they sit at the top.
-        const called = calls(tree, opened)
-        const ctx = { opened, tree, direction, endpoints: endpointsOf(called), models, shownModels }
-        return { children: outermost(tree).map((machine) => elkMachine(machine, ctx)), edges: called }
-      })() }))
+    const lay = (direction) => {
+      const graph = everywhere({ id: 'root', layoutOptions: { ...LAYOUT, 'elk.direction': direction },
+        ...(() => {
+          // Calls cross machines, from a caller to an endpoint, so they sit at the top.
+          const called = calls(tree, opened)
+          const ctx = { opened, tree, direction, endpoints: endpointsOf(called), models, shownModels }
+          return { children: outermost(tree).map((machine) => elkMachine(machine, ctx)), edges: called }
+        })() })
+      const fed = unwire(graph)
+      return elk.layout(graph).then((laid) => ({ ...laid, fed }))
+    }
     const fit = ({ width, height }) => Math.min(screen.width / width, screen.height / height)
     const choosing = !flow.current || flow.current.screen !== screen
     const directions = choosing ? Object.keys(SIDES) : [flow.current.direction]
@@ -176,6 +183,25 @@ function Diagram({ tree, opened, toggle, hovered, hover, users, models, shownMod
     </Users.Provider>
     </Toggle.Provider>
   )
+}
+
+// Takes the wires of every value that goes to SHARED places or more out of the
+// graph; returns, for each place, the names of the values it gets that way.
+function unwire(root) {
+  const all = []
+  const visit = (node) => { for (const e of node.edges ?? []) all.push([node, e]); (node.children ?? []).forEach(visit) }
+  visit(root)
+  const count = new Map()
+  for (const [, e] of all) if (!e.call) count.set(e.sources[0], (count.get(e.sources[0]) ?? 0) + 1)
+  const fed = new Map()
+  for (const [node, e] of all) {
+    if (e.call || count.get(e.sources[0]) < SHARED) continue
+    node.edges = node.edges.filter((x) => x !== e)
+    const name = e.sources[0].includes('#') ? e.sources[0].split(':').pop()
+      : e.sources[0].split('/').filter(Boolean).pop().replace(/\.[^.]+$/, '')
+    fed.set(e.targets[0], [...new Set([...(fed.get(e.targets[0]) ?? []), name])])
+  }
+  return fed
 }
 
 function everywhere(node) {
@@ -268,6 +294,7 @@ function portsOf(machine, { direction, endpoints, tree }) {
 // ELK's result as React Flow nodes, each placed in its parent, and edges along
 // ELK's routes.
 function flatten(root, tree, { models, shownModels }) {
+  const fed = (id) => root.fed?.get(id)
   const nodes = []
   const edges = []
   const visit = (node, parentId) => {
@@ -277,13 +304,13 @@ function flatten(root, tree, { models, shownModels }) {
         id: node.id, parentId, type: node.kind, position: { x: node.x, y: node.y }, ...sized(node),
         data: folder ? { id: node.id, label: `${folder.name} ▾`, about: folder.about, machine: true }
           : { label: node.label, about: find(tree, node.id)?.about, model: find(tree, node.id)?.model,
-            shown: shownModels.has(node.id), network: models.get(node.id) },
+            shown: shownModels.has(node.id), network: models.get(node.id), fed: fed(node.id) },
       })
     }
     for (const port of node.ports ?? []) {
       // A port's name sits over the wires that start or end at it.
       nodes.push({ id: port.id, parentId: node.id, type: 'port', position: { x: port.x, y: port.y }, ...sized(port),
-        zIndex: PORT_LAYER, data: { label: port.label, about: portAbout(port.id, tree) } })
+        zIndex: PORT_LAYER, data: { label: port.label, about: portAbout(port.id, tree), fed: fed(port.id) } })
     }
     for (const child of node.children ?? []) visit(child, node === root ? undefined : node.id)
     for (const edge of node.edges ?? []) {
@@ -333,6 +360,7 @@ function Part({ id, data }) {
   return (
     <div className={`box nopan${touchesDisk(data.label) ? ' disk' : ''}${users.has(id) ? ' user' : ''}`}>
       <Ends />
+      <Fed names={data.fed} />
       {data.label}
       {button}
       {data.about && <span className="about">{data.about}</span>}
@@ -369,6 +397,7 @@ function Machine({ id, data }) {
   return (
     <div className={`box machine nopan${users.has(id) ? ' user' : ''}`}>
       <Ends />
+      <Fed names={data.fed} />
       {data.label}
       {data.about && <span className="about">{data.about}</span>}
     </div>
@@ -389,10 +418,16 @@ function Frame({ data }) {
   )
 }
 
+// Where a box's widely shared values come from, over its top edge.
+function Fed({ names }) {
+  return names ? <span className="fed">← {names.join(', ')}</span> : null
+}
+
 function Port({ data }) {
   return (
     <div className="port nopan">
       <Ends />
+      <Fed names={data.fed} />
       {data.label}
       {data.about && <span className="about">{data.about}</span>}
     </div>
