@@ -3,7 +3,9 @@
   python model_view.py <project root> <file>
 
 The file offers `_example()`, returning (model, inputs): a built model and a
-tuple of example inputs. The model runs once on them; each block records when
+tuple of example inputs, at the sizes the model really runs at. The model runs
+once on them with fake tensors, which carry shapes and no numbers, so a real
+size costs nothing; each block records when
 it was first used and what went in and came out, by name. Repeated blocks fold into one
 with a count, a repeating pattern of blocks into one pass marked with how
 many times it repeats, plain layers get their sizes, dropout and activations are left
@@ -18,6 +20,7 @@ import sys
 
 import torch
 import torch.nn as nn
+from torch._subclasses.fake_tensor import FakeTensorMode
 
 SKIP = (nn.Dropout, nn.GELU, nn.ReLU, nn.SiLU, nn.Tanh, nn.Sigmoid, nn.Identity, nn.Upsample)
 MAIN = ('TransformerBlock', 'TransformerEncoderLayer', 'TransformerDecoderLayer', 'Block', 'GRU', 'LSTM', 'RNN')
@@ -217,9 +220,10 @@ def cycles(out):
 
 def main(root, path):
     module = load(root, path)
-    model, inputs = module._example()
-    model.eval()
-    seen = record(model, inputs)
+    with FakeTensorMode(allow_non_fake_inputs=True):
+        model, inputs = module._example()
+        model.eval()
+        seen = record(model, inputs)
     # A wrapper holding one model: show the model it holds.
     while len(children(model)) == 1 and layer(children(model)[0][1]) is None:
         model = children(model)[0][1]
