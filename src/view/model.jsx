@@ -141,14 +141,15 @@ function Icon({ kind, x, y }) {
 }
 
 function Tip({ block, x, y }) {
-  const show = (shapes) => shapes.map((s) => `(${s.join(' × ')})`).join(', ') || '—'
+  const show = (ends) => ends.map(({ name, shape, about }) => `${name} (${shape.join(' × ')})${about ? ` ${about}` : ''}`)
   return (
     <div className="m-tip" style={{ left: Math.min(x + 14, window.innerWidth - 380), top: Math.min(y + 14, window.innerHeight - 180) }}>
       <b>{`${block.count > 1 ? `${block.count} × ` : ''}${block.kind}`}</b>
       <span className="m-names">{block.names.join(', ')}</span>
       <span>{block.note || 'no comment in the code'}</span>
       {block.line && <span className="m-names">{block.line}</span>}
-      {block.io && <span className="m-names">in {show(block.io.in)} → out {show(block.io.out)}</span>}
+      {block.io && show(block.io.in).map((line) => <span key={`in ${line}`} className="m-names">in: {line}</span>)}
+      {block.io && show(block.io.out).map((line) => <span key={`out ${line}`} className="m-names">out: {line}</span>)}
       <span className="m-names">{amount(block.params)} parameters</span>
     </div>
   )

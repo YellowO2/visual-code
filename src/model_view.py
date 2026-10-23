@@ -4,7 +4,7 @@
 
 The file offers `_example()`, returning (model, inputs): a built model and a
 tuple of example inputs. The model runs once on them; each block records when
-it was first used and what went in and came out. Repeated blocks fold into one
+it was first used and what went in and came out, by name. Repeated blocks fold into one
 with a count, a repeating pattern of blocks into one pass marked with how
 many times it repeats, plain layers get their sizes, dropout and activations are left
 out, and each block carries the comment written next to it in the code.
@@ -71,18 +71,52 @@ def shapes(x):
 
 
 def record(model, inputs):
-    """Runs the model once; each module's first use: order, input and output shapes."""
+    """Runs the model once; each module's first use: order, inputs and outputs."""
     seen, hooks = {}, []
     for mod in model.modules():
-        def hook(mod, inp, out):
+        def hook(mod, args, kwargs, out):
             if mod not in seen:
-                seen[mod] = (len(seen), shapes(inp)[:3], shapes(out)[:2])
-        hooks.append(mod.register_forward_hook(hook))
+                seen[mod] = (len(seen), named(mod, args, kwargs), returned(mod, out))
+        hooks.append(mod.register_forward_hook(hook, with_kwargs=True))
     with torch.no_grad():
         model(*inputs)
     for h in hooks:
         h.remove()
     return seen
+
+
+def named(mod, args, kwargs):
+    """The tensors a module was called with, each with its argument's name and
+    what the forward's docstring says it is."""
+    try:
+        bound = inspect.signature(mod.forward).bind(*args, **kwargs).arguments
+    except (TypeError, ValueError):
+        bound = {f'input {i + 1}': a for i, a in enumerate(args)}
+    return [{'name': n, 'shape': s, 'about': described(mod, n)}
+            for n, v in bound.items() for s in shapes(v)]
+
+
+def returned(mod, out):
+    return [{'name': 'out', 'shape': s, 'about': described(mod, 'returns')} for s in shapes(out)]
+
+
+def described(mod, name):
+    """The rest of the forward docstring's line that starts with this name, past its shape."""
+    lines = (inspect.getdoc(type(mod).forward) or '').splitlines()
+    for i, line in enumerate(lines):
+        m = re.match(rf'(\s*){re.escape(name)}:?\s+(\([^)]*\))?\s*(.*)', line)
+        if m:
+            # A one-line docstring listing several inputs describes none of them.
+            if m.group(3).startswith((',', '->')):
+                return ''
+            # Lines indented past the name carry on its description.
+            more = []
+            for nxt in lines[i + 1:]:
+                if len(nxt) - len(nxt.lstrip()) <= len(m.group(1)) + len(name) or not nxt.strip():
+                    break
+                more.append(nxt.strip())
+            return ' '.join([m.group(3).strip(), *more]).strip()
+    return ''
 
 
 def comment(owner, attr, child):

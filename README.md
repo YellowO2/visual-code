@@ -47,7 +47,10 @@ of example inputs, gets a **model** button on its box. It opens the box in
 place, in the diagram, to the model drawn the way papers draw networks (fully connected layers, embeddings,
 recurrent layers, convolutions, transformer blocks), with each block's sizes,
 what goes in and out, its parameters and the comment next to it in the code
-on hover. The model runs once on the example inputs to read this, in the
+on hover. Each input is shown by its argument's name, with what it is when the
+block's `forward` docstring has a line for it, as `uv (B, T, N, 2) the current
+guess`. A pattern of blocks repeated back to back is drawn once, in a frame
+marked with how many times it repeats. The model runs once on the example inputs to read this, in the
 Python given by `--python` (or `VISUAL_CODE_PYTHON`; default `python3`), which
 must be able to import the project.
 
